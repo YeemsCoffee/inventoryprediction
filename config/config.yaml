@@ -1,0 +1,34 @@
+# Configuration file for Customer Trend Analysis ML App
+
+# Data Processing Settings
+data:
+  default_date_format: "%Y-%m-%d"
+  minimum_transactions: 10  # Minimum transactions required for analysis
+
+# Seasonal Analysis Settings
+seasonal_analysis:
+  seasons:
+    winter: [12, 1, 2]
+    spring: [3, 4, 5]
+    summer: [6, 7, 8]
+    fall: [9, 10, 11]
+  anomaly_threshold: 2.0  # Standard deviations for anomaly detection
+
+# Customer Segmentation Settings
+segmentation:
+  default_clusters: 4
+  random_seed: 42
+  max_iterations: 300
+
+# Forecasting Settings
+forecasting:
+  default_periods: 30
+  default_frequency: "W"  # Weekly
+  confidence_level: 0.95
+
+# Visualization Settings
+visualization:
+  figure_size: [12, 6]
+  dpi: 300
+  style: "whitegrid"
+  color_palette: ["#2E86AB", "#A23B72", "#F18F01", "#4ECDC4", "#FF6B6B"]

@@ -252,6 +252,15 @@ class YearlyTrendAnalyzer:
         retention = self.calculate_customer_retention()
         product_trends = self.analyze_product_trends_over_time()
 
+        # Check if we have enough data for trend analysis
+        if 'avg_customer_growth_pct' not in trends:
+            recommendations.append({
+                'type': 'Data Availability',
+                'priority': 'Info',
+                'recommendation': 'Need at least 2 years of data for comprehensive yearly trend analysis'
+            })
+            return recommendations
+
         # Customer growth recommendations
         if trends['avg_customer_growth_pct'] < 0:
             recommendations.append({

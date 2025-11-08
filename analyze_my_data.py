@@ -3,7 +3,12 @@ Script to analyze your customer data from data/raw folder
 """
 
 import os
+import sys
 import pandas as pd
+
+# Add the project root to Python path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from src.app import CustomerTrendApp
 
 # Find CSV files in data/raw

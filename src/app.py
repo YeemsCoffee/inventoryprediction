@@ -7,12 +7,12 @@ from typing import Dict, List, Optional
 import warnings
 warnings.filterwarnings('ignore')
 
-from data.customer_data import CustomerDataProcessor
-from analysis.seasonal_trends import SeasonalTrendAnalyzer
-from analysis.yearly_trends import YearlyTrendAnalyzer
-from models.forecaster import CustomerTrendForecaster
-from models.segmentation import CustomerSegmentation
-from visualization.charts import TrendVisualizer
+from .data.customer_data import CustomerDataProcessor
+from .analysis.seasonal_trends import SeasonalTrendAnalyzer
+from .analysis.yearly_trends import YearlyTrendAnalyzer
+from .models.forecaster import CustomerTrendForecaster
+from .models.segmentation import CustomerSegmentation
+from .visualization.charts import TrendVisualizer
 
 
 class CustomerTrendApp:

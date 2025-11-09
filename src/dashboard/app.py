@@ -222,7 +222,7 @@ class BusinessIntelligenceDashboard:
 
         self.setup_callbacks()
 
-        self.app.run_server(host=host, port=port, debug=debug)
+        self.app.run(host=host, port=port, debug=debug)
 
     def setup_callbacks(self):
         """Setup all dashboard callbacks."""

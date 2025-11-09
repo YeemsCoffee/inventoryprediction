@@ -4,14 +4,11 @@ pandas>=2.0.0
 scikit-learn>=1.3.0
 scipy>=1.11.0
 
-# Deep Learning
-tensorflow>=2.14.0
-keras>=2.14.0
+# Deep Learning (skip if Python 3.14+)
+# tensorflow>=2.14.0
 
 # Advanced Time Series and Forecasting
-prophet>=1.1.5
 statsmodels>=0.14.0
-pmdarima>=2.0.3
 xgboost>=2.0.0
 lightgbm>=4.1.0
 
@@ -21,7 +18,6 @@ seaborn>=0.12.0
 plotly>=5.14.0
 dash>=2.14.0
 dash-bootstrap-components>=1.5.0
-kaleido>=0.2.1
 
 # Data Processing
 joblib>=1.3.0
@@ -29,7 +25,6 @@ sqlalchemy>=2.0.0
 
 # Square API Integration
 requests>=2.31.0
-squareup>=30.1.0.20240115
 python-dotenv>=1.0.0
 
 # API Framework
@@ -42,6 +37,3 @@ python-dateutil>=2.8.2
 pytz>=2023.3
 tqdm>=4.66.0
 schedule>=1.2.0
-
-# Database (optional)
-psycopg2-binary>=2.9.9

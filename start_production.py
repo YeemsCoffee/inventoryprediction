@@ -22,13 +22,13 @@ logging.basicConfig(
 # Add project to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from src.dashboard.production_dashboard import ProductionDashboard
+from src.dashboard.modern_dashboard import ModernDashboard
 
 def main():
     """Start the production dashboard."""
 
     print("\n" + "=" * 70)
-    print("🚀 PRODUCTION BUSINESS INTELLIGENCE DASHBOARD")
+    print("🎨 MODERN BUSINESS INTELLIGENCE DASHBOARD")
     print("=" * 70)
     print()
 
@@ -54,15 +54,21 @@ def main():
     debug = os.getenv('DASHBOARD_DEBUG', 'False').lower() == 'true'
 
     print()
-    print("✨ Production Features:")
+    print("✨ Modern Design Features:")
+    print("  🎯 8px grid system for perfect alignment")
+    print("  🌓 Light/dark theme toggle")
+    print("  ♿ WCAG 2.1 AA accessible")
+    print("  📱 Mobile responsive design")
+    print("  ⚡ Smooth animations (< 300ms)")
+    print("  🎨 Material Design 3 principles")
+    print()
+    print("🚀 Production Features:")
     print("  🔒 Connection pooling (no memory leaks)")
     print("  ⚡ Query caching (fast performance)")
-    print("  🤖 ML predictions integrated (churn, forecasts, LTV)")
+    print("  🤖 ML predictions integrated")
     print("  📊 Period-over-period comparisons")
-    print("  📈 Cohort analysis & customer insights")
     print("  📥 CSV export functionality")
     print("  🛡️  Comprehensive error handling")
-    print("  📝 Production logging")
     print()
     print(f"🌐 Dashboard URL: http://{host if host != '0.0.0.0' else 'localhost'}:{port}")
     print(f"🔧 Debug mode: {debug}")
@@ -70,11 +76,11 @@ def main():
     print("⏹️  Press Ctrl+C to stop")
     print()
 
-    logging.info(f"Starting production dashboard on {host}:{port}")
+    logging.info(f"Starting modern dashboard on {host}:{port}")
 
     try:
         # Create and run dashboard
-        dashboard = ProductionDashboard(database_url)
+        dashboard = ModernDashboard(database_url, theme='light')
         dashboard.run(host=host, port=port, debug=debug)
 
     except KeyboardInterrupt:

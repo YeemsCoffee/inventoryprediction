@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 import psycopg2
-from psycopg2.extras import execute_batch
+from psycopg2.extras import execute_batch, Json
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -140,7 +140,7 @@ class SquareToPostgresSync:
 
             order_values.append((
                 order_id,
-                {},  # raw_payload (simplified since we're working from DataFrame)
+                Json({}),  # raw_payload (simplified since we're working from DataFrame)
                 first_row.get('location_id', 'UNKNOWN'),
                 first_row['date'],
                 first_row['date'],
@@ -169,7 +169,7 @@ class SquareToPostgresSync:
             line_item_values.append((
                 line_item_id,
                 row['order_id'],
-                {},  # raw_payload
+                Json({}),  # raw_payload
                 row['product'],
                 row['amount'],
                 round((row['price'] / row['amount']) * 100) if row['amount'] > 0 else 0,

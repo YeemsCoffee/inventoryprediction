@@ -43,8 +43,8 @@ class CustomerDataProcessor:
                 product_column: 'product'
             })
 
-            # Convert date to datetime
-            self.data['date'] = pd.to_datetime(self.data['date'])
+            # Convert date to datetime (handle various formats including ISO8601)
+            self.data['date'] = pd.to_datetime(self.data['date'], format='ISO8601')
 
             print(f"Loaded {len(self.data)} transactions from {filepath}")
             return self.data

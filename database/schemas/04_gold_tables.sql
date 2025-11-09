@@ -34,9 +34,7 @@ CREATE TABLE IF NOT EXISTS gold.dim_customer (
 
     given_name VARCHAR(255),
     family_name VARCHAR(255),
-    full_name VARCHAR(511) GENERATED ALWAYS AS (
-        COALESCE(given_name || ' ' || family_name, given_name, family_name, 'Guest')
-    ) STORED,
+    full_name VARCHAR(511),  -- Populated during insert/update
     email_address VARCHAR(500),
     phone_number VARCHAR(100),
 

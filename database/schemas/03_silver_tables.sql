@@ -18,10 +18,10 @@ CREATE TABLE IF NOT EXISTS silver.orders (
     tip_amount NUMERIC(12,2),
     currency VARCHAR(10),
 
-    -- Derived fields
-    order_date DATE GENERATED ALWAYS AS (created_at::DATE) STORED,
-    order_hour INT GENERATED ALWAYS AS (EXTRACT(HOUR FROM created_at)) STORED,
-    order_day_of_week INT GENERATED ALWAYS AS (EXTRACT(DOW FROM created_at)) STORED,
+    -- Derived fields (populated during insert/update)
+    order_date DATE,
+    order_hour INT,
+    order_day_of_week INT,
 
     -- Metadata
     source_updated_at TIMESTAMPTZ,

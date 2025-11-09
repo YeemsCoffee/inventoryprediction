@@ -1,12 +1,15 @@
 """
 Production startup script for the BI Dashboard.
-Runs the dashboard with production settings.
+Runs the production-grade dashboard with PostgreSQL backend.
 """
 
 import os
 import sys
 import logging
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Setup logging
 os.makedirs('logs', exist_ok=True)
@@ -19,49 +22,73 @@ logging.basicConfig(
 # Add project to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from src.dashboard.simple_dashboard import create_simple_dashboard
+from src.dashboard.production_dashboard import ProductionDashboard
 
 def main():
     """Start the production dashboard."""
 
-    print("=" * 70)
-    print("🚀 STARTING PRODUCTION BI DASHBOARD")
+    print("\n" + "=" * 70)
+    print("🚀 PRODUCTION BUSINESS INTELLIGENCE DASHBOARD")
     print("=" * 70)
     print()
 
-    # Check for data file
-    data_path = os.getenv('DASHBOARD_DATA_PATH', 'data/raw/square_sales.csv')
+    # Check for database connection
+    database_url = os.getenv('DATABASE_URL')
 
-    if not os.path.exists(data_path):
-        print(f"⚠️  Warning: Data file not found at {data_path}")
-        print("   Using sample data instead...")
-        print("   To use real data:")
-        print("   1. Run: python sync_square_daily.py backfill")
-        print("   2. Or set DASHBOARD_DATA_PATH environment variable")
+    if not database_url:
+        print("❌ ERROR: DATABASE_URL not set in .env file")
         print()
-        data_path = None
-    else:
-        print(f"✅ Data loaded from: {data_path}")
+        print("Setup instructions:")
+        print("  1. Copy .env.example to .env")
+        print("  2. Set DATABASE_URL to your PostgreSQL connection string")
+        print("  3. Run: python database/init_database.py (if not already done)")
+        print("  4. Run: python scripts/sync_square_to_postgres.py --all")
+        print()
+        sys.exit(1)
+
+    print("✅ Database connection configured")
 
     # Get settings from environment
     host = os.getenv('DASHBOARD_HOST', '0.0.0.0')  # 0.0.0.0 for external access
     port = int(os.getenv('DASHBOARD_PORT', '8050'))
     debug = os.getenv('DASHBOARD_DEBUG', 'False').lower() == 'true'
 
-    print(f"📊 Dashboard URL: http://{host}:{port}")
+    print()
+    print("✨ Production Features:")
+    print("  🔒 Connection pooling (no memory leaks)")
+    print("  ⚡ Query caching (fast performance)")
+    print("  🤖 ML predictions integrated (churn, forecasts, LTV)")
+    print("  📊 Period-over-period comparisons")
+    print("  📈 Cohort analysis & customer insights")
+    print("  📥 CSV export functionality")
+    print("  🛡️  Comprehensive error handling")
+    print("  📝 Production logging")
+    print()
+    print(f"🌐 Dashboard URL: http://{host if host != '0.0.0.0' else 'localhost'}:{port}")
     print(f"🔧 Debug mode: {debug}")
     print()
+    print("⏹️  Press Ctrl+C to stop")
+    print()
 
-    logging.info(f"Starting dashboard on {host}:{port}")
+    logging.info(f"Starting production dashboard on {host}:{port}")
 
     try:
         # Create and run dashboard
-        dashboard = create_simple_dashboard(data_path)
+        dashboard = ProductionDashboard(database_url)
         dashboard.run(host=host, port=port, debug=debug)
 
+    except KeyboardInterrupt:
+        print("\n\n👋 Dashboard stopped by user")
+        logging.info("Dashboard stopped by user")
     except Exception as e:
-        logging.error(f"Dashboard failed to start: {str(e)}")
-        print(f"❌ Error: {str(e)}")
+        logging.error(f"Dashboard failed to start: {str(e)}", exc_info=True)
+        print(f"\n❌ Error: {str(e)}")
+        print("\nTroubleshooting:")
+        print("  1. Verify DATABASE_URL is correct")
+        print("  2. Ensure database is initialized: python database/init_database.py")
+        print("  3. Check if data is loaded: python scripts/sync_square_to_postgres.py --all")
+        print("  4. Check logs in logs/ directory for details")
+        print()
         sys.exit(1)
 
 if __name__ == "__main__":

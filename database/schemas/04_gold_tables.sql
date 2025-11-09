@@ -133,13 +133,10 @@ CREATE TABLE IF NOT EXISTS gold.fact_sales (
     order_day_of_week INTEGER,
 
     -- Metadata
-    created_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
 
-    -- Constraints
-    FOREIGN KEY (date_key) REFERENCES gold.dim_date(date_key),
-    FOREIGN KEY (customer_sk) REFERENCES gold.dim_customer(customer_sk),
-    FOREIGN KEY (product_sk) REFERENCES gold.dim_product(product_sk),
-    FOREIGN KEY (location_sk) REFERENCES gold.dim_location(location_sk)
+    -- Note: FK constraints removed for data warehouse performance
+    -- Referential integrity enforced at ETL/application level
 
 ) PARTITION BY RANGE (date_key);
 
@@ -166,7 +163,7 @@ CREATE INDEX IF NOT EXISTS idx_fact_sales_customer ON gold.fact_sales(customer_s
 CREATE INDEX IF NOT EXISTS idx_fact_sales_product ON gold.fact_sales(product_sk, date_key);
 CREATE INDEX IF NOT EXISTS idx_fact_sales_location ON gold.fact_sales(location_sk, date_key);
 CREATE INDEX IF NOT EXISTS idx_fact_sales_order ON gold.fact_sales(order_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_fact_sales_line_item ON gold.fact_sales(line_item_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fact_sales_line_item ON gold.fact_sales(line_item_id, date_key);  -- Must include partition key
 
 COMMENT ON TABLE gold.fact_sales IS 'Sales fact table with one row per line item';
 

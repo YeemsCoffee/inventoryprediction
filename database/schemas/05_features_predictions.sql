@@ -46,8 +46,8 @@ CREATE TABLE IF NOT EXISTS features.customer_daily_features (
     -- Metadata
     calculated_at TIMESTAMPTZ DEFAULT NOW(),
 
-    PRIMARY KEY (feature_date, customer_sk),
-    FOREIGN KEY (customer_sk) REFERENCES gold.dim_customer(customer_sk)
+    PRIMARY KEY (feature_date, customer_sk)
+    -- Note: FK constraint removed for data warehouse performance
 ) PARTITION BY RANGE (feature_date);
 
 -- Create partitions
@@ -103,9 +103,8 @@ CREATE TABLE IF NOT EXISTS features.product_location_daily_features (
     -- Metadata
     calculated_at TIMESTAMPTZ DEFAULT NOW(),
 
-    PRIMARY KEY (feature_date, product_sk, location_sk),
-    FOREIGN KEY (product_sk) REFERENCES gold.dim_product(product_sk),
-    FOREIGN KEY (location_sk) REFERENCES gold.dim_location(location_sk)
+    PRIMARY KEY (feature_date, product_sk, location_sk)
+    -- Note: FK constraints removed for data warehouse performance
 ) PARTITION BY RANGE (feature_date);
 
 CREATE TABLE IF NOT EXISTS features.product_location_daily_features_2023
@@ -141,9 +140,8 @@ CREATE TABLE IF NOT EXISTS predictions.customer_churn_scores (
     confidence_score NUMERIC(5,4),
 
     -- Metadata
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-
-    FOREIGN KEY (customer_sk) REFERENCES gold.dim_customer(customer_sk)
+    created_at TIMESTAMPTZ DEFAULT NOW()
+    -- Note: FK constraint removed for data warehouse performance
 );
 
 CREATE INDEX IF NOT EXISTS idx_churn_customer ON predictions.customer_churn_scores(customer_sk, prediction_date);
@@ -171,10 +169,8 @@ CREATE TABLE IF NOT EXISTS predictions.demand_forecasts (
     model_accuracy NUMERIC(5,4),
 
     -- Metadata
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-
-    FOREIGN KEY (product_sk) REFERENCES gold.dim_product(product_sk),
-    FOREIGN KEY (location_sk) REFERENCES gold.dim_location(location_sk)
+    created_at TIMESTAMPTZ DEFAULT NOW()
+    -- Note: FK constraints removed for data warehouse performance
 );
 
 CREATE INDEX IF NOT EXISTS idx_forecast_product_date ON predictions.demand_forecasts(product_sk, target_date);
@@ -202,9 +198,8 @@ CREATE TABLE IF NOT EXISTS predictions.customer_ltv_scores (
     model_version VARCHAR(50),
 
     -- Metadata
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-
-    FOREIGN KEY (customer_sk) REFERENCES gold.dim_customer(customer_sk)
+    created_at TIMESTAMPTZ DEFAULT NOW()
+    -- Note: FK constraint removed for data warehouse performance
 );
 
 CREATE INDEX IF NOT EXISTS idx_ltv_customer ON predictions.customer_ltv_scores(customer_sk, prediction_date);

@@ -126,7 +126,50 @@ def create_simple_dashboard(data_source: str = None):
         height=400
     )
 
-    # Layout
+    # Create tab content
+    overview_content = dbc.Container([
+        dbc.Row([
+            dbc.Col([dcc.Graph(figure=sales_fig)], width=8),
+            dbc.Col([dcc.Graph(figure=products_fig)], width=4)
+        ], className="mb-4"),
+        dbc.Row([
+            dbc.Col([dcc.Graph(figure=seasonal_fig)], width=6),
+            dbc.Col([dcc.Graph(figure=segments_fig)], width=6)
+        ])
+    ], fluid=True)
+
+    trends_content = dbc.Container([
+        dbc.Row([
+            dbc.Col([dcc.Graph(figure=yearly_fig)], width=12)
+        ], className="mb-4"),
+        dbc.Row([
+            dbc.Col([dcc.Graph(figure=seasonal_fig)], width=12)
+        ])
+    ], fluid=True)
+
+    customers_content = dbc.Container([
+        dbc.Row([
+            dbc.Col([dcc.Graph(figure=segments_fig)], width=12)
+        ], className="mb-4"),
+        dbc.Row([
+            dbc.Col([
+                html.H4("Customer Segment Recommendations"),
+                html.Ul([
+                    html.Li(f"{rec['segment_label']}: {rec['recommendation']}")
+                    for rec in segmentation['recommendations'][:5]
+                ])
+            ])
+        ])
+    ], fluid=True)
+
+    products_content = dbc.Container([
+        dbc.Row([
+            dbc.Col([dcc.Graph(figure=products_fig)], width=6),
+            dbc.Col([dcc.Graph(figure=seasonal_fig)], width=6)
+        ])
+    ], fluid=True)
+
+    # Layout with tabs
     app.layout = dbc.Container([
         html.H1("📊 Business Intelligence Dashboard", className="text-center my-4"),
         html.P("Advanced Analytics & ML-Powered Insights", className="text-center text-muted mb-4"),
@@ -159,34 +202,17 @@ def create_simple_dashboard(data_source: str = None):
             ]), width=3),
         ], className="mb-4"),
 
-        # Charts
-        dbc.Row([
-            dbc.Col([
-                dcc.Graph(figure=sales_fig)
-            ], width=8),
-            dbc.Col([
-                dcc.Graph(figure=products_fig)
-            ], width=4)
-        ], className="mb-4"),
-
-        dbc.Row([
-            dbc.Col([
-                dcc.Graph(figure=seasonal_fig)
-            ], width=6),
-            dbc.Col([
-                dcc.Graph(figure=segments_fig)
-            ], width=6)
-        ], className="mb-4"),
-
-        dbc.Row([
-            dbc.Col([
-                dcc.Graph(figure=yearly_fig)
-            ], width=12)
-        ], className="mb-4"),
+        # Tabs
+        dbc.Tabs([
+            dbc.Tab(overview_content, label="📊 Overview", tab_id="overview"),
+            dbc.Tab(trends_content, label="📈 Trends", tab_id="trends"),
+            dbc.Tab(customers_content, label="👥 Customers", tab_id="customers"),
+            dbc.Tab(products_content, label="📦 Products", tab_id="products"),
+        ], id="tabs", active_tab="overview"),
 
         html.Hr(),
-        html.P("💡 Tip: This is a simplified stable dashboard. All data is pre-loaded to prevent callback loops.",
-              className="text-muted text-center")
+        html.P("💡 All charts are pre-loaded for stability. No dynamic updates.",
+              className="text-muted text-center mt-4")
 
     ], fluid=True)
 

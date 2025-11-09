@@ -198,13 +198,7 @@ class ModernDashboard:
         min_date, max_date = self.get_date_range()
         default_start = max_date - timedelta(days=30) if max_date else datetime.now() - timedelta(days=30)
 
-        # Generate custom CSS
-        custom_css = generate_custom_css(self.theme)
-
         self.app.layout = html.Div([
-            # Custom CSS injection
-            html.Style(custom_css),
-
             # Theme store
             dcc.Store(id='theme-store', data=self.theme),
 

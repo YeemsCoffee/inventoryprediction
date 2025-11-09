@@ -100,6 +100,12 @@ class CustomerSegmentation:
         # Handle any remaining NaN values
         X = X.fillna(0)
 
+        # Adjust n_clusters if we have fewer samples than clusters
+        n_samples = len(X)
+        if n_samples < n_clusters:
+            n_clusters = max(1, n_samples)  # At least 1 cluster
+            print(f"⚠️  Adjusting clusters from 4 to {n_clusters} (only {n_samples} customers)")
+
         # Standardize features
         X_scaled = self.scaler.fit_transform(X)
 

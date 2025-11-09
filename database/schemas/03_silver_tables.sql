@@ -4,7 +4,7 @@
 
 -- Orders (cleaned and typed)
 CREATE TABLE IF NOT EXISTS silver.orders (
-    order_id VARCHAR(255) PRIMARY KEY,
+    order_id VARCHAR(255) NOT NULL,
     location_id VARCHAR(255) NOT NULL,
     customer_id VARCHAR(255),
     created_at TIMESTAMPTZ NOT NULL,
@@ -19,13 +19,16 @@ CREATE TABLE IF NOT EXISTS silver.orders (
     currency VARCHAR(10),
 
     -- Derived fields (populated during insert/update)
-    order_date DATE,
+    order_date DATE NOT NULL,
     order_hour INT,
     order_day_of_week INT,
 
     -- Metadata
     source_updated_at TIMESTAMPTZ,
-    processed_at TIMESTAMPTZ DEFAULT NOW()
+    processed_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- Primary key must include partition key
+    PRIMARY KEY (order_id, order_date)
 ) PARTITION BY RANGE (order_date);
 
 -- Create partitions for each month (automation recommended via cron)

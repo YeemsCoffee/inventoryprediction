@@ -145,7 +145,7 @@ class SquareToPostgresSync:
                 first_row['date'],
                 first_row['date'],
                 'COMPLETED',
-                int(group['price'].sum() * 100),  # Convert to cents
+                round(group['price'].sum() * 100),  # Convert to cents (rounded)
                 'USD'
             ))
 
@@ -172,10 +172,10 @@ class SquareToPostgresSync:
                 {},  # raw_payload
                 row['product'],
                 row['amount'],
-                int((row['price'] / row['amount']) * 100) if row['amount'] > 0 else 0,
-                int(row['price'] * 100),
-                row.get('catalog_object_id', None),
-                row.get('variation_name', None)
+                round((row['price'] / row['amount']) * 100) if row['amount'] > 0 else 0,
+                round(row['price'] * 100),
+                row.get('category', None),  # Fixed: was 'catalog_object_id'
+                row.get('variation_id', None)  # Fixed: was 'variation_name'
             ))
 
         execute_batch(cursor, """

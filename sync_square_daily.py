@@ -9,6 +9,10 @@ import schedule
 import time
 import logging
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Setup logging
 logging.basicConfig(
@@ -20,13 +24,15 @@ logging.basicConfig(
 def sync_yesterday():
     """Sync yesterday's data from Square."""
     try:
-        connector = SquareDataConnector()
+        # Get environment setting from .env
+        environment = os.getenv('SQUARE_ENVIRONMENT', 'production')
+        connector = SquareDataConnector(environment=environment)
 
         yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
         today = datetime.now().strftime('%Y-%m-%d')
 
         logging.info(f"Starting Square sync for {yesterday}")
-        print(f"📡 Syncing Square data for {yesterday}...")
+        print(f"📡 Syncing Square data for {yesterday} (using {environment} environment)...")
 
         connector.sync_to_csv(
             start_date=yesterday,
@@ -44,13 +50,15 @@ def sync_yesterday():
 def backfill_data(days=90):
     """Initial backfill of historical data."""
     try:
-        connector = SquareDataConnector()
+        # Get environment setting from .env
+        environment = os.getenv('SQUARE_ENVIRONMENT', 'production')
+        connector = SquareDataConnector(environment=environment)
 
         start = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
         end = datetime.now().strftime('%Y-%m-%d')
 
         logging.info(f"Starting backfill: {start} to {end}")
-        print(f"📦 Backfilling {days} days of data...")
+        print(f"📦 Backfilling {days} days of data (using {environment} environment)...")
 
         connector.sync_to_csv(
             start_date=start,

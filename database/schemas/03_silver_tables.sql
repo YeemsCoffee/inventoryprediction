@@ -103,9 +103,10 @@ CREATE TABLE IF NOT EXISTS silver.line_items (
     net_amount NUMERIC(12,2),
 
     -- Metadata
-    processed_at TIMESTAMPTZ DEFAULT NOW(),
+    processed_at TIMESTAMPTZ DEFAULT NOW()
 
-    FOREIGN KEY (order_id) REFERENCES silver.orders(order_id)
+    -- Note: Foreign key constraint removed for data warehouse performance
+    -- Referential integrity enforced at application level
 );
 
 CREATE INDEX IF NOT EXISTS idx_silver_items_order ON silver.line_items(order_id);

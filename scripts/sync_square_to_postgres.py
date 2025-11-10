@@ -299,7 +299,7 @@ class SquareToPostgresSync:
         execute_batch(cursor, """
             INSERT INTO silver.customers (customer_id, valid_from, is_current)
             VALUES (%s, %s, %s)
-            ON CONFLICT ON CONSTRAINT idx_silver_customers_current DO NOTHING
+            ON CONFLICT (customer_id) WHERE is_current DO NOTHING
         """, customer_values)
 
         print(f"  ✅ Loaded {len(customer_values):,} customers")

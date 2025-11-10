@@ -146,6 +146,16 @@ class SquareToPostgresSync:
             print(f"✅ Total: {len(orders_df):,} line items from Square")
             print()
 
+            # Reconnect to database (connection may have timed out during long fetch)
+            print("🔄 Reconnecting to database...")
+            try:
+                self.conn.close()
+            except:
+                pass
+            self.conn = psycopg2.connect(self.database_url)
+            print("✅ Database reconnected")
+            print()
+
             # Load to Bronze layer
             self._load_to_bronze(orders_df)
 
@@ -196,15 +206,19 @@ class SquareToPostgresSync:
                 'USD'
             ))
 
-        # Insert orders
-        execute_batch(cursor, """
-            INSERT INTO bronze.square_orders
-                (id, raw_payload, location_id, created_at, updated_at, state, total_money_amount, total_money_currency)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (id) DO UPDATE SET
-                updated_at = EXCLUDED.updated_at,
-                total_money_amount = EXCLUDED.total_money_amount
-        """, order_values)
+        # Insert orders in batches of 1000
+        batch_size = 1000
+        for i in range(0, len(order_values), batch_size):
+            batch = order_values[i:i+batch_size]
+            execute_batch(cursor, """
+                INSERT INTO bronze.square_orders
+                    (id, raw_payload, location_id, created_at, updated_at, state, total_money_amount, total_money_currency)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    updated_at = EXCLUDED.updated_at,
+                    total_money_amount = EXCLUDED.total_money_amount
+            """, batch)
+            self.conn.commit()  # Commit each batch
 
         print(f"  ✅ Loaded {len(order_values):,} orders to bronze.square_orders")
 
@@ -225,18 +239,23 @@ class SquareToPostgresSync:
                 row.get('variation_id', None)  # Fixed: was 'variation_name'
             ))
 
-        execute_batch(cursor, """
-            INSERT INTO bronze.square_line_items
-                (uid, order_id, raw_payload, name, quantity, base_price_amount, total_money_amount, catalog_object_id, variation_name)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (uid) DO UPDATE SET
-                quantity = EXCLUDED.quantity,
-                total_money_amount = EXCLUDED.total_money_amount
-        """, line_item_values)
+        # Insert line items in batches of 1000
+        batch_size = 1000
+        for i in range(0, len(line_item_values), batch_size):
+            batch = line_item_values[i:i+batch_size]
+            execute_batch(cursor, """
+                INSERT INTO bronze.square_line_items
+                    (uid, order_id, raw_payload, name, quantity, base_price_amount, total_money_amount, catalog_object_id, variation_name)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (uid) DO UPDATE SET
+                    quantity = EXCLUDED.quantity,
+                    total_money_amount = EXCLUDED.total_money_amount
+            """, batch)
+            self.conn.commit()  # Commit each batch
+            if (i // batch_size) % 10 == 0 and i > 0:  # Progress update every 10 batches
+                print(f"    Progress: {i:,} / {len(line_item_values):,} line items inserted...")
 
         print(f"  ✅ Loaded {len(line_item_values):,} line items to bronze.square_line_items")
-
-        self.conn.commit()
         print()
 
     def _transform_to_silver(self, orders_df):

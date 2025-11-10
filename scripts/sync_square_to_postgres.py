@@ -56,7 +56,7 @@ class SquareToPostgresSync:
 
     def backfill_historical_data(self, days_back: int = 365):
         """
-        Backfill historical data from Square.
+        Backfill historical data from Square in monthly chunks.
 
         Args:
             days_back: Number of days of history to fetch
@@ -73,21 +73,63 @@ class SquareToPostgresSync:
         print(f"📅 Date range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
         print(f"   ({days_back} days of history)")
         print()
-
-        # Fetch data from Square
-        print("📡 Fetching data from Square API...")
-        print("   This may take several minutes depending on order volume...")
+        print("💡 Fetching in monthly chunks to avoid timeouts...")
         print()
 
         try:
-            # Fetch orders and line items
-            orders_df = self.square.fetch_orders(
-                start_date=start_date.strftime('%Y-%m-%d'),
-                end_date=end_date.strftime('%Y-%m-%d')
-            )
+            # Generate monthly date ranges
+            date_ranges = []
+            current_start = start_date
 
-            if orders_df.empty:
-                print("⚠️  No orders found in date range")
+            while current_start < end_date:
+                # Get first day of next month
+                if current_start.month == 12:
+                    current_end = datetime(current_start.year + 1, 1, 1) - timedelta(days=1)
+                else:
+                    current_end = datetime(current_start.year, current_start.month + 1, 1) - timedelta(days=1)
+
+                # Don't go past end_date
+                if current_end > end_date:
+                    current_end = end_date
+
+                date_ranges.append((current_start, current_end))
+
+                # Move to next month
+                if current_end.month == 12:
+                    current_start = datetime(current_end.year + 1, 1, 1)
+                else:
+                    current_start = datetime(current_end.year, current_end.month + 1, 1)
+
+            print(f"📦 Splitting into {len(date_ranges)} monthly chunks")
+            print()
+
+            all_orders = []
+
+            # Fetch each month
+            for i, (chunk_start, chunk_end) in enumerate(date_ranges, 1):
+                print(f"📡 Chunk {i}/{len(date_ranges)}: {chunk_start.strftime('%Y-%m-%d')} to {chunk_end.strftime('%Y-%m-%d')}", end=" ... ")
+
+                try:
+                    # Fetch orders for this chunk
+                    orders_df = self.square.fetch_orders(
+                        start_date=chunk_start.strftime('%Y-%m-%d'),
+                        end_date=chunk_end.strftime('%Y-%m-%d')
+                    )
+
+                    if not orders_df.empty:
+                        all_orders.append(orders_df)
+                        print(f"✅ {len(orders_df):,} line items")
+                    else:
+                        print("⚠️  No data")
+
+                except Exception as e:
+                    print(f"❌ Failed: {e}")
+                    print(f"   Skipping chunk and continuing...")
+                    continue
+
+            if not all_orders:
+                print()
+                print("⚠️  No orders found in entire date range")
                 print()
                 print("Possible reasons:")
                 print("  - Using sandbox environment with no test data")
@@ -96,7 +138,12 @@ class SquareToPostgresSync:
                 print()
                 return
 
-            print(f"✅ Fetched {len(orders_df):,} line items from Square")
+            # Combine all chunks
+            print()
+            print("🔄 Combining all chunks...")
+            import pandas as pd
+            orders_df = pd.concat(all_orders, ignore_index=True)
+            print(f"✅ Total: {len(orders_df):,} line items from Square")
             print()
 
             # Load to Bronze layer

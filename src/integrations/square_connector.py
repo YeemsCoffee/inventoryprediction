@@ -139,7 +139,8 @@ class SquareDataConnector:
             response = requests.post(
                 f'{self.base_url}/v2/orders/search',
                 headers=self.headers,
-                json=query
+                json=query,
+                timeout=60  # 60 second timeout
             )
             response.raise_for_status()
 

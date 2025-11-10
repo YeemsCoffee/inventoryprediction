@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta
+import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_batch, Json
 from dotenv import load_dotenv
@@ -141,7 +142,6 @@ class SquareToPostgresSync:
             # Combine all chunks
             print()
             print("🔄 Combining all chunks...")
-            import pandas as pd
             orders_df = pd.concat(all_orders, ignore_index=True)
             print(f"✅ Total: {len(orders_df):,} line items from Square")
             print()
@@ -227,14 +227,19 @@ class SquareToPostgresSync:
         for idx, row in orders_df.iterrows():
             line_item_id = f"{row['order_id']}_ITEM_{idx}"
 
+            # Safely handle potential null values
+            product = row['product'] if pd.notna(row.get('product')) else None
+            amount = float(row['amount']) if pd.notna(row.get('amount')) else 0
+            price = float(row['price']) if pd.notna(row.get('price')) else 0
+
             line_item_values.append((
                 line_item_id,
                 row['order_id'],
                 Json({}),  # raw_payload
-                row['product'],
-                row['amount'],
-                round((row['price'] / row['amount']) * 100) if row['amount'] > 0 else 0,
-                round(row['price'] * 100),
+                product,
+                amount,
+                round((price / amount) * 100) if amount > 0 else 0,
+                round(price * 100),
                 row.get('category', None),  # Fixed: was 'catalog_object_id'
                 row.get('variation_id', None)  # Fixed: was 'variation_name'
             ))
@@ -286,9 +291,19 @@ class SquareToPostgresSync:
         # Customers
         customers = orders_df['customer_id'].unique()
 
+        # Filter out null customers and ensure 'GUEST' customer exists
+        valid_customers = [c for c in customers if pd.notna(c) and c]
+
+        # Always ensure GUEST customer exists for anonymous orders
+        if 'GUEST' not in valid_customers:
+            valid_customers = list(valid_customers) + ['GUEST']
+
         customer_values = []
-        for cust_id in customers:
-            first_order = orders_df[orders_df['customer_id'] == cust_id]['date'].min()
+        for cust_id in valid_customers:
+            if cust_id == 'GUEST':
+                first_order = orders_df['date'].min()  # Use earliest order date for GUEST
+            else:
+                first_order = orders_df[orders_df['customer_id'] == cust_id]['date'].min()
 
             customer_values.append((
                 cust_id,
@@ -307,22 +322,27 @@ class SquareToPostgresSync:
         # Products
         products = orders_df['product'].unique()
 
+        # Filter out null/NaN products
+        products = [p for p in products if pd.notna(p) and p and str(p).strip()]
+
         product_values = []
         for prod in products:
             product_id = f"PROD_{hash(prod) % 10000000}"
             product_values.append((
                 product_id,
-                prod,
+                str(prod).strip(),  # Ensure it's a string and trimmed
                 True
             ))
 
-        execute_batch(cursor, """
-            INSERT INTO silver.products (product_id, product_name, is_active)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (product_id) DO NOTHING
-        """, product_values)
-
-        print(f"  ✅ Loaded {len(product_values)} products")
+        if product_values:
+            execute_batch(cursor, """
+                INSERT INTO silver.products (product_id, product_name, is_active)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (product_id) DO NOTHING
+            """, product_values)
+            print(f"  ✅ Loaded {len(product_values)} products")
+        else:
+            print(f"  ⚠️  No valid products found")
 
         self.conn.commit()
         print()
@@ -389,22 +409,25 @@ class SquareToPostgresSync:
                 dl.location_sk,
                 bli.order_id,
                 bli.uid as line_item_id,
-                bli.quantity,
-                bli.base_price_amount / 100.0 as unit_price,
-                bli.total_money_amount / 100.0 as gross_amount,
+                COALESCE(bli.quantity, 0) as quantity,
+                COALESCE(bli.base_price_amount / 100.0, 0) as unit_price,
+                COALESCE(bli.total_money_amount / 100.0, 0) as gross_amount,
                 0 as discount_amount,
-                bli.total_money_amount / 100.0 as net_amount,
+                COALESCE(bli.total_money_amount / 100.0, 0) as net_amount,
                 bo.created_at as order_timestamp,
                 EXTRACT(HOUR FROM bo.created_at)::INTEGER as order_hour,
                 EXTRACT(DOW FROM bo.created_at)::INTEGER as order_day_of_week
             FROM bronze.square_line_items bli
             JOIN bronze.square_orders bo ON bli.order_id = bo.id
+            -- Use INNER JOIN for product and location to ensure we only insert valid rows
+            INNER JOIN silver.products sp ON sp.product_name = bli.name
+            INNER JOIN gold.dim_product dp ON dp.product_id = sp.product_id
+            INNER JOIN gold.dim_location dl ON dl.location_id = bo.location_id
+            -- Customer is optional (LEFT JOIN)
             LEFT JOIN silver.customers sc ON sc.customer_id =
                 COALESCE((SELECT customer_id FROM bronze.square_orders WHERE id = bli.order_id LIMIT 1), 'GUEST')
             LEFT JOIN gold.dim_customer dc ON dc.customer_id = sc.customer_id AND dc.is_current = TRUE
-            LEFT JOIN silver.products sp ON sp.product_name = bli.name
-            LEFT JOIN gold.dim_product dp ON dp.product_id = sp.product_id
-            LEFT JOIN gold.dim_location dl ON dl.location_id = bo.location_id
+            WHERE bli.name IS NOT NULL  -- Only insert line items with valid product names
             ON CONFLICT (line_item_id, date_key) DO UPDATE SET
                 quantity = EXCLUDED.quantity,
                 net_amount = EXCLUDED.net_amount

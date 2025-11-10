@@ -228,7 +228,9 @@ class SquareToPostgresSync:
             line_item_id = f"{row['order_id']}_ITEM_{idx}"
 
             # Safely handle potential null values
-            product = row['product'] if pd.notna(row.get('product')) else None
+            # Note: Square connector now ensures product names are never null,
+            # but keep defensive handling for edge cases
+            product = row['product'] if pd.notna(row.get('product')) else 'Unknown Product'
             amount = float(row['amount']) if pd.notna(row.get('amount')) else 0
             price = float(row['price']) if pd.notna(row.get('price')) else 0
 
@@ -322,27 +324,33 @@ class SquareToPostgresSync:
         # Products
         products = orders_df['product'].unique()
 
-        # Filter out null/NaN products
-        products = [p for p in products if pd.notna(p) and p and str(p).strip()]
+        # Clean product names - replace null/empty with placeholder
+        # (Square connector now prevents nulls, but handle legacy data)
+        cleaned_products = []
+        for p in products:
+            if pd.notna(p) and p and str(p).strip():
+                cleaned_products.append(str(p).strip())
+            else:
+                cleaned_products.append('Unknown Product')
+
+        # Remove duplicates
+        cleaned_products = list(set(cleaned_products))
 
         product_values = []
-        for prod in products:
+        for prod in cleaned_products:
             product_id = f"PROD_{hash(prod) % 10000000}"
             product_values.append((
                 product_id,
-                str(prod).strip(),  # Ensure it's a string and trimmed
+                prod,
                 True
             ))
 
-        if product_values:
-            execute_batch(cursor, """
-                INSERT INTO silver.products (product_id, product_name, is_active)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (product_id) DO NOTHING
-            """, product_values)
-            print(f"  ✅ Loaded {len(product_values)} products")
-        else:
-            print(f"  ⚠️  No valid products found")
+        execute_batch(cursor, """
+            INSERT INTO silver.products (product_id, product_name, is_active)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (product_id) DO NOTHING
+        """, product_values)
+        print(f"  ✅ Loaded {len(product_values)} products")
 
         self.conn.commit()
         print()
@@ -419,15 +427,15 @@ class SquareToPostgresSync:
                 EXTRACT(DOW FROM bo.created_at)::INTEGER as order_day_of_week
             FROM bronze.square_line_items bli
             JOIN bronze.square_orders bo ON bli.order_id = bo.id
-            -- Use INNER JOIN for product and location to ensure we only insert valid rows
-            INNER JOIN silver.products sp ON sp.product_name = bli.name
+            -- Handle null product names by defaulting to 'Unknown Product'
+            -- Product and location are required (INNER JOIN)
+            INNER JOIN silver.products sp ON sp.product_name = COALESCE(bli.name, 'Unknown Product')
             INNER JOIN gold.dim_product dp ON dp.product_id = sp.product_id
             INNER JOIN gold.dim_location dl ON dl.location_id = bo.location_id
             -- Customer is optional (LEFT JOIN)
             LEFT JOIN silver.customers sc ON sc.customer_id =
                 COALESCE((SELECT customer_id FROM bronze.square_orders WHERE id = bli.order_id LIMIT 1), 'GUEST')
             LEFT JOIN gold.dim_customer dc ON dc.customer_id = sc.customer_id AND dc.is_current = TRUE
-            WHERE bli.name IS NOT NULL  -- Only insert line items with valid product names
             ON CONFLICT (line_item_id, date_key) DO UPDATE SET
                 quantity = EXCLUDED.quantity,
                 net_amount = EXCLUDED.net_amount

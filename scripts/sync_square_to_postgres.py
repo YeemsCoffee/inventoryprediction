@@ -449,9 +449,9 @@ class SquareToPostgresSync:
                 0 as discount_amount,
                 COALESCE(bli.total_money_amount / 100.0, 0) as net_amount,
                 bo.created_at as order_timestamp,
-                -- Convert UTC to local timezone before extracting hour/day
-                EXTRACT(HOUR FROM (bo.created_at AT TIME ZONE 'UTC' AT TIME ZONE COALESCE(dl.timezone, 'America/Los_Angeles')))::INTEGER as order_hour,
-                EXTRACT(DOW FROM (bo.created_at AT TIME ZONE 'UTC' AT TIME ZONE COALESCE(dl.timezone, 'America/Los_Angeles')))::INTEGER as order_day_of_week
+                -- Convert to local timezone before extracting hour/day
+                EXTRACT(HOUR FROM (bo.created_at AT TIME ZONE COALESCE(dl.timezone, 'America/Los_Angeles')))::INTEGER as order_hour,
+                EXTRACT(DOW FROM (bo.created_at AT TIME ZONE COALESCE(dl.timezone, 'America/Los_Angeles')))::INTEGER as order_day_of_week
             FROM bronze.square_line_items bli
             INNER JOIN bronze.square_orders bo ON bli.order_id = bo.id
             -- Handle null product names by defaulting to 'Unknown Product'

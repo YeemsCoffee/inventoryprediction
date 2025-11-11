@@ -57,8 +57,8 @@ def fix_timezone():
 
         cursor.execute("""
             UPDATE gold.fact_sales fs
-            SET order_hour = EXTRACT(HOUR FROM (fs.order_timestamp AT TIME ZONE 'UTC' AT TIME ZONE dl.timezone))::INTEGER,
-                order_day_of_week = EXTRACT(DOW FROM (fs.order_timestamp AT TIME ZONE 'UTC' AT TIME ZONE dl.timezone))::INTEGER
+            SET order_hour = EXTRACT(HOUR FROM (fs.order_timestamp AT TIME ZONE dl.timezone))::INTEGER,
+                order_day_of_week = EXTRACT(DOW FROM (fs.order_timestamp AT TIME ZONE dl.timezone))::INTEGER
             FROM gold.dim_location dl
             WHERE fs.location_sk = dl.location_sk;
         """)
@@ -74,14 +74,14 @@ def fix_timezone():
         print("\n📊 Sample of corrected hours:")
         cursor.execute("""
             SELECT
-                order_timestamp AT TIME ZONE 'UTC' as utc_time,
-                order_timestamp AT TIME ZONE 'UTC' AT TIME ZONE dl.timezone as local_time,
+                order_timestamp as timestamp_utc,
+                order_timestamp AT TIME ZONE dl.timezone as local_time,
                 order_hour as hour,
                 COUNT(*) as orders
             FROM gold.fact_sales fs
             JOIN gold.dim_location dl ON fs.location_sk = dl.location_sk
             GROUP BY 1, 2, 3
-            ORDER BY utc_time DESC
+            ORDER BY timestamp_utc DESC
             LIMIT 5;
         """)
 

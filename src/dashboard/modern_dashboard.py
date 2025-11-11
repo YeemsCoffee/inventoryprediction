@@ -145,10 +145,12 @@ class ModernDashboard:
             from sqlalchemy import text
             engine = self.db_engine.get_engine()
 
-            # Use text() to properly wrap the query for SQLAlchemy 2.0+
+            # For queries with parameters, use raw connection to avoid SQLAlchemy 2.0 issues
             if params is not None:
-                df = pd.read_sql_query(text(query), engine, params=params)
+                with engine.connect() as conn:
+                    df = pd.read_sql_query(query, conn, params=params)
             else:
+                # For queries without params, use text() wrapper
                 df = pd.read_sql_query(text(query), engine)
 
             logger.debug(f"Query returned {len(df)} rows")

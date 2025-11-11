@@ -191,9 +191,6 @@ class ModernDashboard:
         default_start = max_date - timedelta(days=30) if max_date else datetime.now() - timedelta(days=30)
 
         self.app.layout = html.Div([
-            # Theme store
-            dcc.Store(id='theme-store', data=self.theme),
-
             # Date range store
             dcc.Store(id='date-range-store', data={
                 'min_date': min_date.strftime('%Y-%m-%d') if min_date else None,
@@ -202,7 +199,7 @@ class ModernDashboard:
 
             # Main container with proper spacing
             dbc.Container([
-                # Header with theme toggle
+                # Header
                 html.Header([
                     dbc.Row([
                         dbc.Col([
@@ -223,24 +220,7 @@ class ModernDashboard:
                                     'margin': f"{self.tokens.SPACING['2']} 0 0 0"
                                 })
                             ])
-                        ], lg=8, md=12),
-                        dbc.Col([
-                            html.Div([
-                                # Theme toggle button
-                                dbc.Button([
-                                    html.I(id='theme-icon', className="fas fa-moon",
-                                          style={'marginRight': self.tokens.SPACING['2']}),
-                                    html.Span(id='theme-label', children="Dark Mode")
-                                ], id='theme-toggle', color='secondary', outline=True,
-                                   className='btn-secondary',
-                                   style={'width': '100%'}),
-                            ], style={
-                                'display': 'flex',
-                                'alignItems': 'center',
-                                'justifyContent': 'flex-end',
-                                'height': '100%'
-                            })
-                        ], lg=4, md=12, className='mt-3 mt-lg-0')
+                        ], lg=8, md=12)
                     ], align='center')
                 ], style={
                     'padding': f"{self.tokens.SPACING['8']} 0",
@@ -274,16 +254,7 @@ class ModernDashboard:
                                 minimum_nights=0,  # Allow same-day selection
                                 initial_visible_month=min_date if min_date else default_start,  # Start at earliest date
                                 style={'width': '100%'}
-                            ),
-                            # Quick date range selection buttons
-                            html.Div([
-                                html.Div([
-                                    dbc.Button("Last 30 Days", id="range-30d", size="sm", color="light", outline=True, className="me-1 mt-2"),
-                                    dbc.Button("Last 90 Days", id="range-90d", size="sm", color="light", outline=True, className="me-1 mt-2"),
-                                    dbc.Button("Last 6 Months", id="range-6m", size="sm", color="light", outline=True, className="me-1 mt-2"),
-                                    dbc.Button("All Time", id="range-all", size="sm", color="light", outline=True, className="mt-2"),
-                                ], style={'display': 'flex', 'flexWrap': 'wrap'})
-                            ])
+                            )
                         ], lg=4, md=6, xs=12, className='mb-3 mb-lg-0'),
 
                         dbc.Col([
@@ -305,27 +276,7 @@ class ModernDashboard:
                                 clearable=False,
                                 style={'width': '100%'}
                             )
-                        ], lg=3, md=6, xs=12, className='mb-3 mb-lg-0'),
-
-                        dbc.Col([
-                            html.Label("Quick Select", style={
-                                'fontSize': self.tokens.TYPOGRAPHY['text_sm'],
-                                'fontWeight': self.tokens.TYPOGRAPHY['weight_semibold'],
-                                'color': self.colors['text_primary'],
-                                'marginBottom': self.tokens.SPACING['2'],
-                                'display': 'block'
-                            }),
-                            dbc.ButtonGroup([
-                                dbc.Button("7D", id="btn-7d", size="sm", outline=True, color="primary",
-                                          className='btn-secondary'),
-                                dbc.Button("30D", id="btn-30d", size="sm", outline=True, color="primary",
-                                          className='btn-secondary'),
-                                dbc.Button("90D", id="btn-90d", size="sm", outline=True, color="primary",
-                                          className='btn-secondary'),
-                                dbc.Button("YTD", id="btn-ytd", size="sm", outline=True, color="primary",
-                                          className='btn-secondary'),
-                            ], style={'width': '100%'})
-                        ], lg=3, md=6, xs=12, className='mb-3 mb-lg-0'),
+                        ], lg=4, md=6, xs=12, className='mb-3 mb-lg-0'),
 
                         dbc.Col([
                             html.Label("Actions", style={
@@ -406,111 +357,16 @@ class ModernDashboard:
     def _setup_callbacks(self):
         """Setup callbacks."""
 
-        # Theme toggle
-        @self.app.callback(
-            Output('theme-store', 'data'),
-            Output('theme-icon', 'className'),
-            Output('theme-label', 'children'),
-            Input('theme-toggle', 'n_clicks'),
-            State('theme-store', 'data'),
-            prevent_initial_call=True
-        )
-        def toggle_theme(n_clicks, current_theme):
-            if not n_clicks:
-                return current_theme, "fas fa-moon", "Dark Mode"
-
-            new_theme = 'dark' if current_theme == 'light' else 'light'
-            icon = "fas fa-sun" if new_theme == 'dark' else "fas fa-moon"
-            label = "Light Mode" if new_theme == 'dark' else "Dark Mode"
-
-            return new_theme, icon, label
-
-        # Quick date buttons
-        @self.app.callback(
-            Output('date-picker', 'start_date'),
-            Output('date-picker', 'end_date'),
-            Input('range-30d', 'n_clicks'),
-            Input('range-90d', 'n_clicks'),
-            Input('range-6m', 'n_clicks'),
-            Input('range-all', 'n_clicks'),
-            State('date-range-store', 'data'),
-            prevent_initial_call=True
-        )
-        def update_dates(btn30, btn90, btn6m, btnall, date_range_data):
-            ctx = callback_context
-            if not ctx.triggered:
-                raise dash.exceptions.PreventUpdate
-
-            button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-
-            # Check if any button was actually clicked (not initial None value)
-            if button_id == 'range-30d' and btn30 is None:
-                raise dash.exceptions.PreventUpdate
-            elif button_id == 'range-90d' and btn90 is None:
-                raise dash.exceptions.PreventUpdate
-            elif button_id == 'range-6m' and btn6m is None:
-                raise dash.exceptions.PreventUpdate
-            elif button_id == 'range-all' and btnall is None:
-                raise dash.exceptions.PreventUpdate
-
-            # Get the actual max date from database
-            max_date_str = date_range_data.get('max_date') if date_range_data else None
-            min_date_str = date_range_data.get('min_date') if date_range_data else None
-
-            if max_date_str:
-                end = datetime.strptime(max_date_str, '%Y-%m-%d')
-            else:
-                end = datetime.now()
-
-            if button_id == 'range-30d':
-                start = end - timedelta(days=30)
-            elif button_id == 'range-90d':
-                start = end - timedelta(days=90)
-            elif button_id == 'range-6m':
-                start = end - timedelta(days=180)
-            elif button_id == 'range-all':
-                # Use the earliest date available in database
-                if min_date_str:
-                    start = datetime.strptime(min_date_str, '%Y-%m-%d')
-                else:
-                    start = end - timedelta(days=365)
-            else:
-                raise dash.exceptions.PreventUpdate
-
-            return start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')
-
         # Main dashboard update
         @self.app.callback(
             Output('dashboard-content', 'children'),
             Input('date-picker', 'start_date'),
             Input('date-picker', 'end_date'),
-            Input('location-filter', 'value'),
-            Input('theme-store', 'data')
+            Input('location-filter', 'value')
         )
-        def update_dashboard(start_date, end_date, location, theme):
+        def update_dashboard(start_date, end_date, location):
             try:
-                logger.info(f"Dashboard update: {start_date} to {end_date}, location={location}, theme={theme}")
-
-                # Update theme colors
-                if theme != self.theme:
-                    self.theme = theme
-                    self.colors = get_theme(theme)
-                    # Update chart colors based on theme
-                    self.chart_colors = {
-                        'primary': self.colors['primary']['500'],
-                        'success': self.colors['success']['500'],
-                        'warning': self.colors['warning']['500'],
-                        'danger': self.colors['danger']['500'],
-                        'info': self.colors['info']['500'],
-                        'neutral': [
-                            self.colors['primary']['500'],
-                            self.colors['info']['500'],
-                            self.colors['success']['500'],
-                            self.colors['warning']['500'],
-                            self.colors['secondary']['400'],
-                            self.colors['primary']['300'],
-                        ]
-                    }
+                logger.info(f"Dashboard update: {start_date} to {end_date}, location={location}")
 
                 loc_filter = "" if location == 'all' else f"AND dl.location_id = '{location}'"
 

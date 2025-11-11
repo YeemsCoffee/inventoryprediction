@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS gold.dim_location (
     postal_code VARCHAR(50),
     country VARCHAR(10),
     status VARCHAR(50),
+    timezone VARCHAR(50) DEFAULT 'America/Los_Angeles',  -- IANA timezone for hourly calculations
 
     -- Metadata
     created_at TIMESTAMPTZ DEFAULT NOW(),

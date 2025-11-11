@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS bronze.square_orders (
     id VARCHAR(255) PRIMARY KEY,
     raw_payload JSONB NOT NULL,  -- Full Square API response
     location_id VARCHAR(255),
+    customer_id VARCHAR(255),  -- Added for easier joins
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ,
     state VARCHAR(50),
@@ -19,8 +20,20 @@ CREATE TABLE IF NOT EXISTS bronze.square_orders (
     source VARCHAR(50) DEFAULT 'square_api'
 );
 
+-- Add customer_id column if table already exists without it
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='bronze' AND table_name='square_orders' AND column_name='customer_id'
+    ) THEN
+        ALTER TABLE bronze.square_orders ADD COLUMN customer_id VARCHAR(255);
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_bronze_orders_created ON bronze.square_orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_bronze_orders_location ON bronze.square_orders(location_id);
+CREATE INDEX IF NOT EXISTS idx_bronze_orders_customer ON bronze.square_orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_bronze_orders_ingested ON bronze.square_orders(ingested_at);
 
 COMMENT ON TABLE bronze.square_orders IS 'Raw immutable orders from Square API';

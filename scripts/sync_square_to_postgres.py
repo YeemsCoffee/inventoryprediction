@@ -192,13 +192,17 @@ class SquareToPostgresSync:
         order_groups = orders_df.groupby('order_id')
 
         order_values = []
+        customer_map = {}  # Track customer_id for each order
         for order_id, group in order_groups:
             first_row = group.iloc[0]
+            customer_id = first_row.get('customer_id', 'GUEST')
+            customer_map[order_id] = customer_id
 
             order_values.append((
                 order_id,
                 Json({}),  # raw_payload (simplified since we're working from DataFrame)
                 first_row.get('location_id', 'UNKNOWN'),
+                customer_id,  # Add customer_id to Bronze
                 first_row['date'],
                 first_row['date'],
                 'COMPLETED',
@@ -212,20 +216,31 @@ class SquareToPostgresSync:
             batch = order_values[i:i+batch_size]
             execute_batch(cursor, """
                 INSERT INTO bronze.square_orders
-                    (id, raw_payload, location_id, created_at, updated_at, state, total_money_amount, total_money_currency)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    (id, raw_payload, location_id, customer_id, created_at, updated_at, state, total_money_amount, total_money_currency)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE SET
                     updated_at = EXCLUDED.updated_at,
-                    total_money_amount = EXCLUDED.total_money_amount
+                    total_money_amount = EXCLUDED.total_money_amount,
+                    customer_id = EXCLUDED.customer_id
             """, batch)
             self.conn.commit()  # Commit each batch
 
         print(f"  ✅ Loaded {len(order_values):,} orders to bronze.square_orders")
 
-        # Insert line items
+        # Insert line items - Use unique ID based on order + sequence
         line_item_values = []
+        line_item_counter = {}  # Track sequence per order
+
         for idx, row in orders_df.iterrows():
-            line_item_id = f"{row['order_id']}_ITEM_{idx}"
+            order_id = row['order_id']
+
+            # Generate sequence number for this order
+            if order_id not in line_item_counter:
+                line_item_counter[order_id] = 0
+            line_item_counter[order_id] += 1
+
+            # Create unique line_item_id using order_id + sequence
+            line_item_id = f"{order_id}_ITEM_{line_item_counter[order_id]}"
 
             # Safely handle potential null values
             # Note: Square connector now ensures product names are never null,
@@ -410,7 +425,7 @@ class SquareToPostgresSync:
                 gross_amount, discount_amount, net_amount,
                 order_timestamp, order_hour, order_day_of_week
             )
-            SELECT
+            SELECT DISTINCT ON (bli.uid, TO_CHAR(bo.created_at, 'YYYYMMDD')::INTEGER)
                 TO_CHAR(bo.created_at, 'YYYYMMDD')::INTEGER as date_key,
                 dc.customer_sk,
                 dp.product_sk,
@@ -426,19 +441,16 @@ class SquareToPostgresSync:
                 EXTRACT(HOUR FROM bo.created_at)::INTEGER as order_hour,
                 EXTRACT(DOW FROM bo.created_at)::INTEGER as order_day_of_week
             FROM bronze.square_line_items bli
-            JOIN bronze.square_orders bo ON bli.order_id = bo.id
+            INNER JOIN bronze.square_orders bo ON bli.order_id = bo.id
             -- Handle null product names by defaulting to 'Unknown Product'
             -- Product and location are required (INNER JOIN)
             INNER JOIN silver.products sp ON sp.product_name = COALESCE(bli.name, 'Unknown Product')
             INNER JOIN gold.dim_product dp ON dp.product_id = sp.product_id
             INNER JOIN gold.dim_location dl ON dl.location_id = bo.location_id
-            -- Customer is optional (LEFT JOIN)
-            LEFT JOIN silver.customers sc ON sc.customer_id =
-                COALESCE((SELECT customer_id FROM bronze.square_orders WHERE id = bli.order_id LIMIT 1), 'GUEST')
+            -- Customer is optional (LEFT JOIN) - join directly to orders table
+            LEFT JOIN silver.customers sc ON sc.customer_id = COALESCE(bo.customer_id, 'GUEST')
             LEFT JOIN gold.dim_customer dc ON dc.customer_id = sc.customer_id AND dc.is_current = TRUE
-            ON CONFLICT (line_item_id, date_key) DO UPDATE SET
-                quantity = EXCLUDED.quantity,
-                net_amount = EXCLUDED.net_amount
+            ON CONFLICT (line_item_id, date_key) DO NOTHING
         """)
 
         rows_inserted = cursor.rowcount

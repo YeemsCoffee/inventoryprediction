@@ -55,12 +55,13 @@ class SquareToPostgresSync:
             raise Exception(f"Failed to connect to Square: {test_result['message']}")
         print()
 
-    def backfill_historical_data(self, days_back: int = 365):
+    def backfill_historical_data(self, days_back: int = 365, oldest_first: bool = False):
         """
         Backfill historical data from Square in monthly chunks.
 
         Args:
             days_back: Number of days of history to fetch
+            oldest_first: If True, fetch oldest data first; if False, fetch most recent
         """
         print("=" * 70)
         print(f"  SQUARE → POSTGRESQL HISTORICAL BACKFILL")
@@ -68,11 +69,21 @@ class SquareToPostgresSync:
         print()
 
         # Calculate date range
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days_back)
+        if oldest_first:
+            # Fetch oldest data: start from 3 years ago, go for days_back days
+            start_date = datetime.now() - timedelta(days=1095)  # 3 years ago (Square max)
+            end_date = start_date + timedelta(days=days_back)
+        else:
+            # Fetch most recent data: go back days_back from today
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days_back)
 
         print(f"📅 Date range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
         print(f"   ({days_back} days of history)")
+        if oldest_first:
+            print(f"   🕐 Fetching OLDEST data (starting from 3 years ago)")
+        else:
+            print(f"   📆 Fetching MOST RECENT data")
         print()
         print("💡 Fetching in monthly chunks to avoid timeouts...")
         print()
@@ -515,6 +526,8 @@ def main():
                        help='Number of days of history to fetch (default: 365)')
     parser.add_argument('--all', action='store_true',
                        help='Fetch all available history (3 years for Square)')
+    parser.add_argument('--oldest', action='store_true',
+                       help='Fetch oldest data first (instead of most recent)')
 
     args = parser.parse_args()
 
@@ -534,7 +547,7 @@ def main():
 
     try:
         syncer.connect()
-        syncer.backfill_historical_data(days_back)
+        syncer.backfill_historical_data(days_back, oldest_first=args.oldest)
     except Exception as e:
         print(f"❌ Sync failed: {e}")
         import traceback

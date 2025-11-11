@@ -271,6 +271,10 @@ class ModernDashboard:
                                 start_date=default_start,
                                 end_date=max_date,
                                 display_format='MMM DD, YYYY',
+                                month_format='MMMM YYYY',  # Show full month name and year
+                                show_outside_days=True,  # Show dates from adjacent months
+                                minimum_nights=0,  # Allow same-day selection
+                                initial_visible_month=min_date if min_date else default_start,  # Start at earliest date
                                 style={'width': '100%'}
                             )
                         ], lg=4, md=6, xs=12, className='mb-3 mb-lg-0'),
@@ -453,12 +457,24 @@ class ModernDashboard:
         )
         def update_dashboard(start_date, end_date, location, theme):
             try:
-                # Update theme if changed
+                # Check which input triggered the callback
+                ctx = dash.callback_context
+                if ctx.triggered:
+                    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+                    # If only theme changed, don't rebuild dashboard - just update theme
+                    if trigger_id == 'theme-store':
+                        self.theme = theme
+                        self.colors = get_theme(theme)
+                        # Prevent update - theme is handled by CSS
+                        raise dash.exceptions.PreventUpdate
+
+                logger.info(f"Dashboard update: {start_date} to {end_date}, location={location}, theme={theme}")
+
+                # Update theme colors for new dashboard builds
                 if theme != self.theme:
                     self.theme = theme
                     self.colors = get_theme(theme)
-
-                logger.info(f"Dashboard update: {start_date} to {end_date}, location={location}, theme={theme}")
 
                 loc_filter = "" if location == 'all' else f"AND dl.location_id = '{location}'"
 

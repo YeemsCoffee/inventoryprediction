@@ -117,9 +117,9 @@ if len(df_sales) >= 7:
     df_sales_sorted = df_sales.sort_values('date')
     recent_avg = df_sales_sorted.tail(7)['revenue'].mean()
 
-    # Generate 30-day forecast
-    last_date = df_sales_sorted['date'].max()
-    forecast_dates = pd.date_range(start=last_date + timedelta(days=1), periods=30)
+    # Generate 30-day forecast starting from TODAY
+    today = datetime.now().date()
+    forecast_dates = pd.date_range(start=today, periods=30)
 
     for forecast_date in forecast_dates:
         cursor.execute("""
@@ -156,9 +156,9 @@ for product in top_products.index:
             recent_quantity = daily_data.tail(7)['quantity_sold'].mean()
             recent_revenue = daily_data.tail(7)['revenue'].mean()
 
-            # Generate 7-day forecast
-            last_date = daily_data.index[-1]
-            forecast_dates = pd.date_range(start=last_date + timedelta(days=1), periods=7)
+            # Generate 7-day forecast starting from TODAY
+            today = datetime.now().date()
+            forecast_dates = pd.date_range(start=today, periods=7)
 
             for forecast_date in forecast_dates:
                 cursor.execute("""
@@ -179,6 +179,121 @@ for product in top_products.index:
 
 conn.commit()
 print(f"\n   ✅ Successfully forecasted {forecast_count} products")
+
+# ============================================================================
+# 3B. LSTM FORECASTING (if TensorFlow available)
+# ============================================================================
+
+print("\n" + "=" * 80)
+print("🧠 Step 3B: Training LSTM model (deep learning)...")
+print("=" * 80)
+
+try:
+    from tensorflow import keras
+    from tensorflow.keras import layers
+    from sklearn.preprocessing import MinMaxScaler
+
+    print("   TensorFlow detected! Training LSTM model...")
+
+    # Prepare data for LSTM
+    if len(df_sales) >= 60:  # Need at least 60 days for LSTM
+        # Sort and prepare revenue series
+        df_sales_sorted = df_sales.sort_values('date')
+        revenue_series = df_sales_sorted['revenue'].values.reshape(-1, 1)
+
+        # Scale data
+        scaler = MinMaxScaler()
+        scaled_data = scaler.fit_transform(revenue_series)
+
+        # Create sequences (use 30 days to predict next day)
+        lookback = 30
+        X, y = [], []
+        for i in range(lookback, len(scaled_data)):
+            X.append(scaled_data[i-lookback:i, 0])
+            y.append(scaled_data[i, 0])
+
+        X, y = np.array(X), np.array(y)
+        X = X.reshape((X.shape[0], X.shape[1], 1))
+
+        # Split train/test
+        split = int(0.8 * len(X))
+        X_train, X_test = X[:split], X[split:]
+        y_train, y_test = y[:split], y[split:]
+
+        print(f"   Training on {len(X_train)} samples...")
+
+        # Build LSTM model
+        model = keras.Sequential([
+            layers.LSTM(50, return_sequences=True, input_shape=(lookback, 1)),
+            layers.Dropout(0.2),
+            layers.LSTM(50, return_sequences=False),
+            layers.Dropout(0.2),
+            layers.Dense(25),
+            layers.Dense(1)
+        ])
+
+        model.compile(optimizer='adam', loss='mse')
+
+        # Train model
+        history = model.fit(
+            X_train, y_train,
+            epochs=20,
+            batch_size=32,
+            validation_split=0.1,
+            verbose=0
+        )
+
+        print(f"   ✅ LSTM trained! Final loss: {history.history['loss'][-1]:.4f}")
+
+        # Generate predictions
+        print("   Generating LSTM forecasts...")
+
+        # Start from last sequence
+        last_sequence = scaled_data[-lookback:]
+        predictions = []
+
+        # Predict next 30 days
+        for _ in range(30):
+            # Reshape for prediction
+            seq = last_sequence.reshape((1, lookback, 1))
+            pred = model.predict(seq, verbose=0)
+            predictions.append(pred[0, 0])
+
+            # Update sequence
+            last_sequence = np.append(last_sequence[1:], pred)
+
+        # Inverse transform predictions
+        predictions = np.array(predictions).reshape(-1, 1)
+        forecasted_revenue = scaler.inverse_transform(predictions)
+
+        # Save LSTM forecasts
+        today = datetime.now().date()
+        forecast_dates = pd.date_range(start=today, periods=30)
+
+        for i, forecast_date in enumerate(forecast_dates):
+            cursor.execute("""
+                INSERT INTO predictions.demand_forecasts
+                (forecast_date, product_name, forecasted_revenue, model_type)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (forecast_date, product_name) DO UPDATE
+                SET forecasted_revenue = EXCLUDED.forecasted_revenue,
+                    model_type = EXCLUDED.model_type,
+                    created_at = NOW()
+            """, (forecast_date.date(), 'Overall_LSTM', float(forecasted_revenue[i][0]), 'LSTM'))
+
+        conn.commit()
+        print(f"   ✅ LSTM forecasts saved!")
+        print(f"      Average forecast: ${forecasted_revenue.mean():,.2f}/day")
+
+    else:
+        print(f"   ⚠️  Need at least 60 days for LSTM (have {len(df_sales)} days)")
+
+except ImportError:
+    print("   ⚠️  TensorFlow not installed. Using Moving Average only.")
+    print("      Install with: pip install tensorflow")
+except Exception as e:
+    print(f"   ⚠️  LSTM training error: {e}")
+    print("      Continuing with Moving Average forecasts...")
 
 # ============================================================================
 # 4. CUSTOMER SEGMENTATION (SIMPLE RFM)

@@ -443,6 +443,16 @@ class ModernDashboard:
 
             button_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
+            # Check if any button was actually clicked (not initial None value)
+            if button_id == 'range-30d' and btn30 is None:
+                raise dash.exceptions.PreventUpdate
+            elif button_id == 'range-90d' and btn90 is None:
+                raise dash.exceptions.PreventUpdate
+            elif button_id == 'range-6m' and btn6m is None:
+                raise dash.exceptions.PreventUpdate
+            elif button_id == 'range-all' and btnall is None:
+                raise dash.exceptions.PreventUpdate
+
             # Get the actual max date from database
             max_date_str = date_range_data.get('max_date') if date_range_data else None
             min_date_str = date_range_data.get('min_date') if date_range_data else None
@@ -479,24 +489,20 @@ class ModernDashboard:
         )
         def update_dashboard(start_date, end_date, location, theme):
             try:
-                # Check which input triggered the callback
-                ctx = dash.callback_context
-                if ctx.triggered:
-                    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
-
-                    # If only theme changed, don't rebuild dashboard - just update theme
-                    if trigger_id == 'theme-store':
-                        self.theme = theme
-                        self.colors = get_theme(theme)
-                        # Prevent update - theme is handled by CSS
-                        raise dash.exceptions.PreventUpdate
-
                 logger.info(f"Dashboard update: {start_date} to {end_date}, location={location}, theme={theme}")
 
-                # Update theme colors for new dashboard builds
+                # Update theme colors
                 if theme != self.theme:
                     self.theme = theme
                     self.colors = get_theme(theme)
+                    # Update chart colors based on theme
+                    self.chart_colors = {
+                        'primary': self.colors['primary']['500'],
+                        'success': self.colors['success']['500'],
+                        'warning': self.colors['warning']['500'],
+                        'danger': self.colors['danger']['500'],
+                        'info': self.colors['info']['500']
+                    }
 
                 loc_filter = "" if location == 'all' else f"AND dl.location_id = '{location}'"
 

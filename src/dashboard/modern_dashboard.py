@@ -599,7 +599,7 @@ class ModernDashboard:
 
         # Forecasts
         forecast_df = self.query_db("""
-            SELECT product_name, COALESCE(AVG(forecasted_quantity), 0) as forecast
+            SELECT product_name, COALESCE(AVG(forecasted_revenue), 0) as forecast
             FROM predictions.demand_forecasts
             WHERE forecast_date >= CURRENT_DATE
             AND forecast_date <= CURRENT_DATE + INTERVAL '7 days'
@@ -610,7 +610,7 @@ class ModernDashboard:
 
         if not forecast_df.empty:
             product = forecast_df.iloc[0]['product_name']
-            qty = forecast_df.iloc[0]['forecast']
+            revenue = forecast_df.iloc[0]['forecast']
             insights.append(
                 html.Div([
                     html.I(className="fas fa-chart-line", style={
@@ -619,7 +619,7 @@ class ModernDashboard:
                     }),
                     html.Div([
                         html.Strong("Top Forecast", style={'display': 'block'}),
-                        html.Span(f"{product} - {qty:.0f} units next week")
+                        html.Span(f"{product} - ${revenue:,.0f}/day next week")
                     ], style={'flex': '1'})
                 ], className='alert alert-info')
             )

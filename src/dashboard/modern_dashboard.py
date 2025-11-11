@@ -617,6 +617,10 @@ class ModernDashboard:
             LIMIT 5
         """)
 
+        logger.info(f"Forecast query returned {len(forecast_df)} rows")
+        if len(forecast_df) > 0:
+            logger.info(f"First forecast: {forecast_df.iloc[0].to_dict()}")
+
         if not forecast_df.empty:
             # Create forecast list
             forecast_items = []

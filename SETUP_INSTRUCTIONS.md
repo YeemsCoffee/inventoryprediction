@@ -117,6 +117,30 @@ python scripts/ml_customer_trends.py
 
 ## Troubleshooting
 
+### Problem: "unsupported operand type(s) for -: 'float' and 'NoneType'"
+
+**Example error:**
+```
+TypeError: unsupported operand type(s) for -: 'float' and 'NoneType'
+```
+
+**Cause:** Square API returned null/None values for financial amounts, causing arithmetic operations to fail.
+
+**Solution:**
+This has been fixed in the latest code. Pull the latest changes:
+```bash
+git pull origin claude/ml-customer-trends-011CUu4anbpoMjhk4jFeo5qE
+```
+
+If you want to diagnose the exact location of the error:
+```bash
+python scripts/diagnose_sync_error.py
+```
+
+This will run the sync with detailed error tracking and show the full traceback.
+
+---
+
 ### Problem: "cannot refresh materialized view concurrently"
 
 **Example error:**

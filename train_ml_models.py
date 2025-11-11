@@ -2,10 +2,7 @@
 """
 Train ML models on PostgreSQL data and save predictions.
 
-This script:
-1. Pulls historical sales data from PostgreSQL
-2. Trains forecasting models (demand, revenue, customer trends)
-3. Saves predictions to database for dashboard display
+Simplified version that does basic forecasting and saves to database.
 """
 
 import os
@@ -20,22 +17,14 @@ from sqlalchemy import create_engine
 # Load environment
 load_dotenv()
 
-# Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from src.models.advanced_forecaster import AdvancedForecaster
-from src.models.customer_behavior import CustomerBehaviorPredictor
-from src.models.segmentation import CustomerSegmentation
-
-print("=" * 80)
-print("🤖 ML MODEL TRAINING PIPELINE")
-print("=" * 80)
-
-# Get database connection
 database_url = os.getenv('DATABASE_URL')
 if not database_url:
     print("❌ ERROR: DATABASE_URL not found in .env file")
     sys.exit(1)
+
+print("=" * 80)
+print("🤖 ML MODEL TRAINING PIPELINE")
+print("=" * 80)
 
 engine = create_engine(database_url)
 conn = psycopg2.connect(database_url)
@@ -51,7 +40,6 @@ print("\n" + "=" * 80)
 print("📊 Step 1: Loading historical sales data...")
 print("=" * 80)
 
-# Load daily sales aggregates (using ALL available data)
 sales_query = """
     SELECT
         DATE(order_timestamp) as date,
@@ -69,7 +57,7 @@ print(f"✅ Loaded {len(df_sales)} days of sales data")
 print(f"   Date range: {df_sales['date'].min()} to {df_sales['date'].max()}")
 print(f"   Total revenue: ${df_sales['revenue'].sum():,.2f}")
 
-# Load product-level data (using ALL available data)
+# Load product-level data
 product_query = """
     SELECT
         DATE(fs.order_timestamp) as date,
@@ -85,190 +73,184 @@ product_query = """
 df_products = pd.read_sql(product_query, engine)
 print(f"✅ Loaded product-level data: {df_products['product_name'].nunique()} unique products")
 
-# Load customer data
-customer_query = """
-    SELECT
-        dc.customer_id,
-        dc.customer_sk,
-        dc.first_order_date,
-        dc.lifetime_value,
-        dc.customer_segment,
-        COUNT(DISTINCT fs.order_id) as order_count,
-        MAX(fs.order_timestamp) as last_order_date,
-        AVG(fs.net_amount) as avg_order_value
-    FROM gold.dim_customer dc
-    LEFT JOIN gold.fact_sales fs ON dc.customer_sk = fs.customer_sk AND dc.is_current = TRUE
-    WHERE dc.is_current = TRUE
-    GROUP BY dc.customer_id, dc.customer_sk, dc.first_order_date, dc.lifetime_value, dc.customer_segment
-"""
-
-df_customers = pd.read_sql(customer_query, engine)
-print(f"✅ Loaded {len(df_customers)} customer records")
-
 # ============================================================================
-# 2. TRAIN DEMAND FORECASTING MODEL
+# 2. CREATE PREDICTIONS TABLE
 # ============================================================================
 
 print("\n" + "=" * 80)
-print("🔮 Step 2: Training demand forecasting model...")
+print("🗄️  Step 2: Setting up predictions table...")
 print("=" * 80)
 
-try:
-    forecaster = AdvancedForecaster(df_sales)
+cursor.execute("""
+    CREATE SCHEMA IF NOT EXISTS predictions;
 
-    # Train model on revenue
-    print("   Training LSTM model on revenue data...")
-    result = forecaster.train_lstm_forecast(
-        date_column='date',
-        value_column='revenue',
-        lookback=30,
-        epochs=50,
-        frequency='D'
-    )
+    DROP TABLE IF EXISTS predictions.demand_forecasts;
 
-    if result:
-        print("   ✅ LSTM model trained successfully")
-
-        # Generate 30-day forecast
-        print("   Generating 30-day forecast...")
-        forecast = forecaster.forecast_next_n_days(n_days=30)
-
-        if forecast is not None:
-            print(f"   ✅ Generated forecast for next 30 days")
-            print(f"      Predicted total revenue: ${forecast['predicted'].sum():,.2f}")
-
-            # Save forecasts to database
-            print("   Saving forecasts to database...")
-
-            # Create predictions table if not exists
-            cursor.execute("""
-                CREATE SCHEMA IF NOT EXISTS predictions;
-
-                CREATE TABLE IF NOT EXISTS predictions.demand_forecasts (
-                    forecast_id SERIAL PRIMARY KEY,
-                    forecast_date DATE NOT NULL,
-                    product_name VARCHAR(500),
-                    forecasted_quantity NUMERIC(10,2),
-                    forecasted_revenue NUMERIC(12,2),
-                    confidence_lower NUMERIC(12,2),
-                    confidence_upper NUMERIC(12,2),
-                    model_type VARCHAR(50),
-                    created_at TIMESTAMPTZ DEFAULT NOW(),
-                    UNIQUE(forecast_date, product_name)
-                );
-            """)
-
-            # Insert revenue forecasts
-            for _, row in forecast.iterrows():
-                cursor.execute("""
-                    INSERT INTO predictions.demand_forecasts
-                    (forecast_date, product_name, forecasted_revenue, model_type)
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (forecast_date, product_name) DO UPDATE
-                    SET forecasted_revenue = EXCLUDED.forecasted_revenue,
-                        created_at = NOW()
-                """, (row['date'], 'Overall', row['predicted'], 'LSTM'))
-
-            conn.commit()
-            print("   ✅ Forecasts saved to predictions.demand_forecasts")
-    else:
-        print("   ⚠️  LSTM training failed (TensorFlow may not be installed)")
-        print("   Install with: pip install tensorflow")
-
-except Exception as e:
-    print(f"   ⚠️  Error in forecasting: {e}")
-    print("   Continuing with other models...")
+    CREATE TABLE predictions.demand_forecasts (
+        forecast_id SERIAL PRIMARY KEY,
+        forecast_date DATE NOT NULL,
+        product_name VARCHAR(500),
+        forecasted_quantity NUMERIC(10,2),
+        forecasted_revenue NUMERIC(12,2),
+        confidence_lower NUMERIC(12,2),
+        confidence_upper NUMERIC(12,2),
+        model_type VARCHAR(50),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(forecast_date, product_name)
+    );
+""")
+conn.commit()
+print("✅ Predictions table created")
 
 # ============================================================================
-# 3. TRAIN CUSTOMER SEGMENTATION
+# 3. SIMPLE MOVING AVERAGE FORECASTING
 # ============================================================================
 
 print("\n" + "=" * 80)
-print("👥 Step 3: Training customer segmentation model...")
+print("📈 Step 3: Generating forecasts using Moving Average...")
 print("=" * 80)
 
-try:
-    segmentation = CustomerSegmentation(df_customers)
+# Overall revenue forecast
+print("   Forecasting overall revenue...")
+if len(df_sales) >= 7:
+    # Use 7-day moving average
+    df_sales_sorted = df_sales.sort_values('date')
+    recent_avg = df_sales_sorted.tail(7)['revenue'].mean()
 
-    # Perform RFM segmentation
-    print("   Calculating RFM scores...")
-    rfm_df = segmentation.rfm_segmentation(
-        customer_id='customer_id',
-        recency_col='last_order_date',
-        frequency_col='order_count',
-        monetary_col='lifetime_value'
-    )
+    # Generate 30-day forecast
+    last_date = df_sales_sorted['date'].max()
+    forecast_dates = pd.date_range(start=last_date + timedelta(days=1), periods=30)
 
-    print(f"   ✅ Segmented {len(rfm_df)} customers")
-
-    # Show segment distribution
-    print("\n   Customer Segments:")
-    segment_dist = rfm_df['segment'].value_counts()
-    for segment, count in segment_dist.items():
-        print(f"      {segment}: {count} customers ({count/len(rfm_df)*100:.1f}%)")
-
-    # Update customer segments in database
-    print("\n   Updating customer segments in database...")
-    for _, row in rfm_df.iterrows():
+    for forecast_date in forecast_dates:
         cursor.execute("""
-            UPDATE gold.dim_customer
-            SET customer_segment = %s
-            WHERE customer_id = %s AND is_current = TRUE
-        """, (row['segment'], row['customer_id']))
+            INSERT INTO predictions.demand_forecasts
+            (forecast_date, product_name, forecasted_revenue, model_type)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (forecast_date, product_name) DO UPDATE
+            SET forecasted_revenue = EXCLUDED.forecasted_revenue,
+                created_at = NOW()
+        """, (forecast_date.date(), 'Overall', float(recent_avg), 'Moving Average'))
 
     conn.commit()
-    print("   ✅ Customer segments updated in gold.dim_customer")
+    print(f"   ✅ Overall forecast: ~${recent_avg:,.2f}/day for next 30 days")
+else:
+    print("   ⚠️  Not enough data for overall forecast (need at least 7 days)")
 
-except Exception as e:
-    print(f"   ⚠️  Error in customer segmentation: {e}")
-
-# ============================================================================
-# 4. PRODUCT DEMAND FORECASTING
-# ============================================================================
-
-print("\n" + "=" * 80)
-print("📦 Step 4: Training product-level demand forecasts...")
-print("=" * 80)
-
-# Get top 10 products by revenue
+# Product-level forecasts
+print("\n   Forecasting top products...")
 top_products = df_products.groupby('product_name')['revenue'].sum().nlargest(10)
-print(f"   Forecasting demand for top {len(top_products)} products")
+forecast_count = 0
 
 for product in top_products.index:
     try:
         product_data = df_products[df_products['product_name'] == product].copy()
-        product_data = product_data.set_index('date')['quantity_sold'].resample('D').sum().fillna(0)
 
-        if len(product_data) >= 30:  # Need at least 30 days
-            # Simple moving average forecast (you can upgrade to LSTM later)
-            forecast_days = 7
-            ma_window = 7
+        # Aggregate by date and sort
+        daily_data = product_data.groupby('date').agg({
+            'quantity_sold': 'sum',
+            'revenue': 'sum'
+        }).sort_index()
 
-            # Calculate moving average
-            ma = product_data.rolling(window=ma_window).mean()
-            last_ma = ma.iloc[-1]
+        if len(daily_data) >= 7:
+            # 7-day moving average
+            recent_quantity = daily_data.tail(7)['quantity_sold'].mean()
+            recent_revenue = daily_data.tail(7)['revenue'].mean()
 
-            # Generate forecast dates
-            last_date = product_data.index[-1]
-            forecast_dates = pd.date_range(start=last_date + timedelta(days=1), periods=forecast_days)
+            # Generate 7-day forecast
+            last_date = daily_data.index[-1]
+            forecast_dates = pd.date_range(start=last_date + timedelta(days=1), periods=7)
 
-            # Save to database
             for forecast_date in forecast_dates:
                 cursor.execute("""
                     INSERT INTO predictions.demand_forecasts
-                    (forecast_date, product_name, forecasted_quantity, model_type)
-                    VALUES (%s, %s, %s, %s)
+                    (forecast_date, product_name, forecasted_quantity, forecasted_revenue, model_type)
+                    VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (forecast_date, product_name) DO UPDATE
                     SET forecasted_quantity = EXCLUDED.forecasted_quantity,
+                        forecasted_revenue = EXCLUDED.forecasted_revenue,
                         created_at = NOW()
-                """, (forecast_date.date(), product, float(last_ma), 'Moving Average'))
+                """, (forecast_date.date(), product, float(recent_quantity), float(recent_revenue), 'Moving Average'))
 
-            print(f"   ✅ {product}: forecast ~{last_ma:.1f} units/day")
+            forecast_count += 1
+            print(f"   ✅ {product}: ~{recent_quantity:.1f} units/day, ${recent_revenue:.2f}/day")
 
     except Exception as e:
         print(f"   ⚠️  Error forecasting {product}: {e}")
 
 conn.commit()
+print(f"\n   ✅ Successfully forecasted {forecast_count} products")
+
+# ============================================================================
+# 4. CUSTOMER SEGMENTATION (SIMPLE RFM)
+# ============================================================================
+
+print("\n" + "=" * 80)
+print("👥 Step 4: Performing customer segmentation...")
+print("=" * 80)
+
+customer_query = """
+    SELECT
+        dc.customer_id,
+        dc.customer_sk,
+        COUNT(DISTINCT fs.order_id) as frequency,
+        COALESCE(SUM(fs.net_amount), 0) as monetary,
+        EXTRACT(DAY FROM (CURRENT_DATE - MAX(fs.order_timestamp))) as recency_days
+    FROM gold.dim_customer dc
+    LEFT JOIN gold.fact_sales fs ON dc.customer_sk = fs.customer_sk
+    WHERE dc.is_current = TRUE
+    GROUP BY dc.customer_id, dc.customer_sk
+    HAVING COUNT(DISTINCT fs.order_id) > 0
+"""
+
+df_customers = pd.read_sql(customer_query, engine)
+print(f"   Analyzing {len(df_customers)} customers...")
+
+if len(df_customers) > 0:
+    # Simple RFM scoring
+    df_customers['r_score'] = pd.qcut(df_customers['recency_days'], q=4, labels=[4, 3, 2, 1], duplicates='drop')
+    df_customers['f_score'] = pd.qcut(df_customers['frequency'].rank(method='first'), q=4, labels=[1, 2, 3, 4], duplicates='drop')
+    df_customers['m_score'] = pd.qcut(df_customers['monetary'].rank(method='first'), q=4, labels=[1, 2, 3, 4], duplicates='drop')
+
+    # Assign segments based on RFM scores
+    def assign_segment(row):
+        r, f, m = int(row['r_score']), int(row['f_score']), int(row['m_score'])
+        avg_score = (r + f + m) / 3
+
+        if avg_score >= 3.5:
+            return 'High Value'
+        elif avg_score >= 3.0:
+            return 'Loyal'
+        elif avg_score >= 2.0:
+            return 'Potential'
+        elif r <= 2:
+            return 'At Risk'
+        else:
+            return 'New'
+
+    df_customers['segment'] = df_customers.apply(assign_segment, axis=1)
+
+    # Show distribution
+    print("\n   Customer Segments:")
+    segment_dist = df_customers['segment'].value_counts()
+    for segment, count in segment_dist.items():
+        pct = count / len(df_customers) * 100
+        print(f"      {segment}: {count} customers ({pct:.1f}%)")
+
+    # Update database
+    print("\n   Updating customer segments in database...")
+    update_count = 0
+    for _, row in df_customers.iterrows():
+        cursor.execute("""
+            UPDATE gold.dim_customer
+            SET customer_segment = %s
+            WHERE customer_id = %s AND is_current = TRUE
+        """, (row['segment'], row['customer_id']))
+        update_count += 1
+
+    conn.commit()
+    print(f"   ✅ Updated {update_count} customer segments")
+else:
+    print("   ⚠️  No customer data found")
 
 # ============================================================================
 # SUMMARY
@@ -278,11 +260,10 @@ print("\n" + "=" * 80)
 print("✅ ML MODEL TRAINING COMPLETE!")
 print("=" * 80)
 
-# Get forecast summary
 cursor.execute("""
     SELECT
         COUNT(DISTINCT forecast_date) as forecast_days,
-        COUNT(DISTINCT product_name) as products,
+        COUNT(DISTINCT COALESCE(product_name, 'Overall')) as products,
         SUM(forecasted_revenue) as total_forecasted_revenue
     FROM predictions.demand_forecasts
     WHERE forecast_date >= CURRENT_DATE
@@ -297,16 +278,12 @@ if summary:
         print(f"   Total forecasted revenue: ${summary[2]:,.2f}")
 
 print("\n💡 Next steps:")
-print("   1. Refresh your dashboard to see ML insights")
-print("   2. Check predictions.demand_forecasts table for raw forecasts")
-print("   3. Run this script daily/weekly to keep forecasts updated")
-print("   4. Upgrade to LSTM for better accuracy (install tensorflow)")
+print("   1. Refresh your dashboard to see forecasts")
+print("   2. Run this script weekly to keep predictions updated")
+print("   3. Optional: Install tensorflow for LSTM models (pip install tensorflow)")
 
-print("\n🔧 To run this automatically:")
-print("   Add to cron: 0 2 * * * cd /path/to/project && python train_ml_models.py")
+print("\n" + "=" * 80)
 
 cursor.close()
 conn.close()
 engine.dispose()
-
-print("\n" + "=" * 80)

@@ -216,12 +216,31 @@ if len(df_customers) > 0:
                                       bins=[0, 1, 3, 6, float('inf')],
                                       labels=[1, 2, 3, 4])
 
-    # Monetary score based on revenue
-    median_revenue = df_customers['monetary'].median()
-    mean_revenue = df_customers['monetary'].mean()
-    df_customers['m_score'] = pd.cut(df_customers['monetary'],
-                                      bins=[0, median_revenue*0.5, median_revenue, mean_revenue, float('inf')],
-                                      labels=[1, 2, 3, 4])
+    # Monetary score based on revenue percentiles
+    # Use percentiles to ensure unique bins
+    q25 = df_customers['monetary'].quantile(0.25)
+    q50 = df_customers['monetary'].quantile(0.50)
+    q75 = df_customers['monetary'].quantile(0.75)
+    max_val = df_customers['monetary'].max()
+
+    # Create unique bins
+    bins = [0, q25, q50, q75, max_val + 1]
+    # Remove duplicates while maintaining order
+    unique_bins = []
+    for b in bins:
+        if not unique_bins or b > unique_bins[-1]:
+            unique_bins.append(b)
+
+    # Create labels based on number of unique bins
+    labels = list(range(1, len(unique_bins)))
+
+    if len(labels) >= 1:
+        df_customers['m_score'] = pd.cut(df_customers['monetary'],
+                                          bins=unique_bins,
+                                          labels=labels,
+                                          include_lowest=True)
+    else:
+        df_customers['m_score'] = 2  # Default middle score if all same
 
     # Assign segments based on RFM scores
     def assign_segment(row):

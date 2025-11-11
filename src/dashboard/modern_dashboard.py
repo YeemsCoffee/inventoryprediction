@@ -539,8 +539,8 @@ class ModernDashboard:
                         fs.order_timestamp::date as date,
                         dl.location_name,
                         dp.product_name,
-                        SUM(fs.quantity) as total_quantity,
-                        SUM(fs.net_amount) as total_revenue,
+                        COALESCE(SUM(fs.quantity), 0) as total_quantity,
+                        COALESCE(SUM(fs.net_amount), 0) as total_revenue,
                         COUNT(DISTINCT fs.order_id) as order_count
                     FROM gold.fact_sales fs
                     JOIN gold.dim_location dl ON fs.location_sk = dl.location_sk
@@ -603,8 +603,8 @@ class ModernDashboard:
         query = f"""
             SELECT
                 COUNT(DISTINCT fs.order_id) as orders,
-                SUM(fs.net_amount) as revenue,
-                AVG(fs.net_amount) as aov,
+                COALESCE(SUM(fs.net_amount), 0) as revenue,
+                COALESCE(AVG(fs.net_amount), 0) as aov,
                 COUNT(DISTINCT fs.customer_sk) as customers
             FROM gold.fact_sales fs
             JOIN gold.dim_location dl ON fs.location_sk = dl.location_sk
@@ -617,12 +617,19 @@ class ModernDashboard:
         if df.empty:
             return {'orders': 0, 'revenue': 0, 'aov': 0, 'customers': 0}
 
-        return df.iloc[0].to_dict()
+        # Convert any None values to 0
+        result = df.iloc[0].to_dict()
+        return {k: (v if v is not None else 0) for k, v in result.items()}
 
     def _render_kpi_cards(self, current, previous):
         """Render modern KPI cards."""
 
         def calc_change(curr, prev):
+            # Handle None values
+            if curr is None:
+                curr = 0
+            if prev is None:
+                prev = 0
             if prev == 0:
                 return 0
             return ((curr - prev) / prev) * 100
@@ -722,7 +729,7 @@ class ModernDashboard:
 
         # Forecasts
         forecast_df = self.query_db("""
-            SELECT product_name, AVG(forecasted_quantity) as forecast
+            SELECT product_name, COALESCE(AVG(forecasted_quantity), 0) as forecast
             FROM predictions.demand_forecasts
             WHERE forecast_date >= CURRENT_DATE
             AND forecast_date <= CURRENT_DATE + INTERVAL '7 days'
@@ -867,7 +874,7 @@ class ModernDashboard:
         query = f"""
             SELECT
                 DATE(fs.order_timestamp) as date,
-                SUM(fs.net_amount) as revenue,
+                COALESCE(SUM(fs.net_amount), 0) as revenue,
                 COUNT(DISTINCT fs.order_id) as orders
             FROM gold.fact_sales fs
             JOIN gold.dim_location dl ON fs.location_sk = dl.location_sk
@@ -919,7 +926,7 @@ class ModernDashboard:
         query = f"""
             SELECT
                 dp.product_name,
-                SUM(fs.net_amount) as revenue
+                COALESCE(SUM(fs.net_amount), 0) as revenue
             FROM gold.fact_sales fs
             JOIN gold.dim_product dp ON fs.product_sk = dp.product_sk
             JOIN gold.dim_location dl ON fs.location_sk = dl.location_sk
@@ -1011,7 +1018,7 @@ class ModernDashboard:
         query = f"""
             SELECT
                 fs.order_hour as hour,
-                SUM(fs.net_amount) as revenue
+                COALESCE(SUM(fs.net_amount), 0) as revenue
             FROM gold.fact_sales fs
             JOIN gold.dim_location dl ON fs.location_sk = dl.location_sk
             WHERE fs.order_timestamp BETWEEN %s AND %s
@@ -1059,7 +1066,7 @@ class ModernDashboard:
                     WHEN 6 THEN 'Sat'
                 END as day,
                 fs.order_day_of_week as dow,
-                SUM(fs.net_amount) as revenue
+                COALESCE(SUM(fs.net_amount), 0) as revenue
             FROM gold.fact_sales fs
             JOIN gold.dim_location dl ON fs.location_sk = dl.location_sk
             WHERE fs.order_timestamp BETWEEN %s AND %s

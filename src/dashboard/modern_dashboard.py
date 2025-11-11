@@ -194,6 +194,12 @@ class ModernDashboard:
             # Theme store
             dcc.Store(id='theme-store', data=self.theme),
 
+            # Date range store
+            dcc.Store(id='date-range-store', data={
+                'min_date': min_date.strftime('%Y-%m-%d') if min_date else None,
+                'max_date': max_date.strftime('%Y-%m-%d') if max_date else None
+            }),
+
             # Main container with proper spacing
             dbc.Container([
                 # Header with theme toggle
@@ -268,7 +274,16 @@ class ModernDashboard:
                                 minimum_nights=0,  # Allow same-day selection
                                 initial_visible_month=min_date if min_date else default_start,  # Start at earliest date
                                 style={'width': '100%'}
-                            )
+                            ),
+                            # Quick date range selection buttons
+                            html.Div([
+                                html.Div([
+                                    dbc.Button("Last 30 Days", id="range-30d", size="sm", color="light", outline=True, className="me-1 mt-2"),
+                                    dbc.Button("Last 90 Days", id="range-90d", size="sm", color="light", outline=True, className="me-1 mt-2"),
+                                    dbc.Button("Last 6 Months", id="range-6m", size="sm", color="light", outline=True, className="me-1 mt-2"),
+                                    dbc.Button("All Time", id="range-all", size="sm", color="light", outline=True, className="mt-2"),
+                                ], style={'display': 'flex', 'flexWrap': 'wrap'})
+                            ])
                         ], lg=4, md=6, xs=12, className='mb-3 mb-lg-0'),
 
                         dbc.Col([
@@ -414,30 +429,45 @@ class ModernDashboard:
         @self.app.callback(
             Output('date-picker', 'start_date'),
             Output('date-picker', 'end_date'),
-            Input('btn-7d', 'n_clicks'),
-            Input('btn-30d', 'n_clicks'),
-            Input('btn-90d', 'n_clicks'),
-            Input('btn-ytd', 'n_clicks'),
+            Input('range-30d', 'n_clicks'),
+            Input('range-90d', 'n_clicks'),
+            Input('range-6m', 'n_clicks'),
+            Input('range-all', 'n_clicks'),
+            State('date-range-store', 'data'),
             prevent_initial_call=True
         )
-        def update_dates(btn7, btn30, btn90, btnytd):
+        def update_dates(btn30, btn90, btn6m, btnall, date_range_data):
             ctx = callback_context
             if not ctx.triggered:
                 raise dash.exceptions.PreventUpdate
 
             button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-            end = datetime.now()
 
-            if button_id == 'btn-7d':
-                start = end - timedelta(days=7)
-            elif button_id == 'btn-30d':
+            # Get the actual max date from database
+            max_date_str = date_range_data.get('max_date') if date_range_data else None
+            min_date_str = date_range_data.get('min_date') if date_range_data else None
+
+            if max_date_str:
+                end = datetime.strptime(max_date_str, '%Y-%m-%d')
+            else:
+                end = datetime.now()
+
+            if button_id == 'range-30d':
                 start = end - timedelta(days=30)
-            elif button_id == 'btn-90d':
+            elif button_id == 'range-90d':
                 start = end - timedelta(days=90)
-            else:  # YTD
-                start = datetime(end.year, 1, 1)
+            elif button_id == 'range-6m':
+                start = end - timedelta(days=180)
+            elif button_id == 'range-all':
+                # Use the earliest date available in database
+                if min_date_str:
+                    start = datetime.strptime(min_date_str, '%Y-%m-%d')
+                else:
+                    start = end - timedelta(days=365)
+            else:
+                raise dash.exceptions.PreventUpdate
 
-            return start, end
+            return start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')
 
         # Main dashboard update
         @self.app.callback(
@@ -471,9 +501,13 @@ class ModernDashboard:
                 loc_filter = "" if location == 'all' else f"AND dl.location_id = '{location}'"
 
                 # Previous period for comparison
-                date_diff = (pd.to_datetime(end_date) - pd.to_datetime(start_date)).days
-                prev_start = pd.to_datetime(start_date) - timedelta(days=date_diff)
-                prev_end = pd.to_datetime(start_date) - timedelta(days=1)
+                # Convert to timezone-naive datetime objects to avoid tz-aware/naive mismatch
+                start_dt = pd.to_datetime(start_date).tz_localize(None) if pd.to_datetime(start_date).tz else pd.to_datetime(start_date)
+                end_dt = pd.to_datetime(end_date).tz_localize(None) if pd.to_datetime(end_date).tz else pd.to_datetime(end_date)
+
+                date_diff = (end_dt - start_dt).days
+                prev_start = start_dt - timedelta(days=date_diff)
+                prev_end = start_dt - timedelta(days=1)
 
                 return self._build_dashboard_content(
                     start_date, end_date, prev_start, prev_end, loc_filter

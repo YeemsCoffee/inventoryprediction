@@ -51,7 +51,7 @@ print("\n" + "=" * 80)
 print("📊 Step 1: Loading historical sales data...")
 print("=" * 80)
 
-# Load daily sales aggregates
+# Load daily sales aggregates (using ALL available data)
 sales_query = """
     SELECT
         DATE(order_timestamp) as date,
@@ -60,7 +60,6 @@ sales_query = """
         SUM(quantity) as items_sold,
         COUNT(DISTINCT customer_sk) as unique_customers
     FROM gold.fact_sales
-    WHERE order_timestamp >= CURRENT_DATE - INTERVAL '365 days'
     GROUP BY DATE(order_timestamp)
     ORDER BY date
 """
@@ -70,7 +69,7 @@ print(f"✅ Loaded {len(df_sales)} days of sales data")
 print(f"   Date range: {df_sales['date'].min()} to {df_sales['date'].max()}")
 print(f"   Total revenue: ${df_sales['revenue'].sum():,.2f}")
 
-# Load product-level data
+# Load product-level data (using ALL available data)
 product_query = """
     SELECT
         DATE(fs.order_timestamp) as date,
@@ -79,7 +78,6 @@ product_query = """
         SUM(fs.net_amount) as revenue
     FROM gold.fact_sales fs
     JOIN gold.dim_product dp ON fs.product_sk = dp.product_sk
-    WHERE fs.order_timestamp >= CURRENT_DATE - INTERVAL '365 days'
     GROUP BY DATE(fs.order_timestamp), dp.product_name
     ORDER BY date, dp.product_name
 """

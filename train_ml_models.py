@@ -226,11 +226,113 @@ except Exception as e:
     sys.exit(1)
 
 # ============================================================================
-# 4. CUSTOMER SEGMENTATION (SIMPLE RFM)
+# 4. PROPHET FORECASTING FOR TOP 10 PRODUCTS
 # ============================================================================
 
 print("\n" + "=" * 80)
-print("👥 Step 4: Performing customer segmentation...")
+print("📦 Step 4: Training Prophet models for top 10 products...")
+print("=" * 80)
+
+try:
+    from prophet import Prophet
+    import warnings
+    warnings.filterwarnings('ignore', category=FutureWarning)
+
+    print("   Prophet detected! Training product-level forecasts...")
+
+    # Get top 10 products by revenue
+    top_products = df_products.groupby('product_name')['revenue'].sum().nlargest(10)
+    print(f"   Training models for {len(top_products)} products...")
+
+    successful_forecasts = 0
+
+    for product_name in top_products.index:
+        try:
+            # Get product data
+            product_data = df_products[df_products['product_name'] == product_name].copy()
+
+            # Aggregate by date
+            daily_data = product_data.groupby('date').agg({
+                'quantity_sold': 'sum',
+                'revenue': 'sum'
+            }).reset_index()
+
+            # Need at least 30 days of data
+            if len(daily_data) < 30:
+                print(f"   ⚠️  {product_name}: Not enough data ({len(daily_data)} days)")
+                continue
+
+            # Prepare data for Prophet (requires 'ds' and 'y' columns)
+            prophet_df = pd.DataFrame({
+                'ds': daily_data['date'],
+                'y': daily_data['quantity_sold']
+            })
+
+            # Train Prophet model
+            model = Prophet(
+                daily_seasonality=False,
+                weekly_seasonality=True,
+                yearly_seasonality=True if len(daily_data) >= 180 else False,
+                seasonality_mode='multiplicative',
+                changepoint_prior_scale=0.05
+            )
+
+            model.fit(prophet_df)
+
+            # Generate 30-day forecast
+            future = model.make_future_dataframe(periods=30)
+            forecast = model.predict(future)
+
+            # Get only future predictions (from today forward)
+            today = datetime.now().date()
+            future_forecast = forecast[forecast['ds'] >= pd.Timestamp(today)].head(30)
+
+            # Calculate average unit price for revenue estimation
+            avg_price = daily_data['revenue'].sum() / daily_data['quantity_sold'].sum()
+
+            # Save forecasts to database
+            for _, row in future_forecast.iterrows():
+                forecasted_qty = max(0, row['yhat'])  # Don't allow negative forecasts
+                forecasted_rev = forecasted_qty * avg_price
+
+                cursor.execute("""
+                    INSERT INTO predictions.demand_forecasts
+                    (forecast_date, product_name, forecasted_quantity, forecasted_revenue, model_type)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (forecast_date, product_name) DO UPDATE
+                    SET forecasted_quantity = EXCLUDED.forecasted_quantity,
+                        forecasted_revenue = EXCLUDED.forecasted_revenue,
+                        model_type = EXCLUDED.model_type,
+                        created_at = NOW()
+                """, (row['ds'].date(), product_name, float(forecasted_qty), float(forecasted_rev), 'Prophet'))
+
+            conn.commit()
+            successful_forecasts += 1
+
+            # Show forecast summary
+            avg_forecast = future_forecast['yhat'].mean()
+            print(f"   ✅ {product_name}: ~{avg_forecast:.1f} units/day (${avg_forecast * avg_price:.2f}/day)")
+
+        except Exception as e:
+            print(f"   ⚠️  Error forecasting {product_name}: {e}")
+            continue
+
+    print(f"\n   ✅ Successfully forecasted {successful_forecasts} products using Prophet")
+
+except ImportError:
+    print("   ⚠️  Prophet not installed. Skipping product-level forecasts.")
+    print("      Install with: pip install prophet")
+except Exception as e:
+    print(f"   ⚠️  Prophet forecasting error: {e}")
+    import traceback
+    traceback.print_exc()
+
+# ============================================================================
+# 5. CUSTOMER SEGMENTATION (SIMPLE RFM)
+# ============================================================================
+
+print("\n" + "=" * 80)
+print("👥 Step 5: Performing customer segmentation...")
 print("=" * 80)
 
 customer_query = """

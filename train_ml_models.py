@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Train ML models on PostgreSQL data and save predictions.
+Train LSTM deep learning model on PostgreSQL data and save predictions.
 
-Simplified version that does basic forecasting and saves to database.
+Uses TensorFlow/Keras LSTM neural network for revenue forecasting
+and RFM analysis for customer segmentation.
 """
 
 import os
@@ -103,89 +104,11 @@ conn.commit()
 print("✅ Predictions table created")
 
 # ============================================================================
-# 3. SIMPLE MOVING AVERAGE FORECASTING
+# 3. LSTM FORECASTING (DEEP LEARNING)
 # ============================================================================
 
 print("\n" + "=" * 80)
-print("📈 Step 3: Generating forecasts using Moving Average...")
-print("=" * 80)
-
-# Overall revenue forecast
-print("   Forecasting overall revenue...")
-if len(df_sales) >= 7:
-    # Use 7-day moving average
-    df_sales_sorted = df_sales.sort_values('date')
-    recent_avg = df_sales_sorted.tail(7)['revenue'].mean()
-
-    # Generate 30-day forecast starting from TODAY
-    today = datetime.now().date()
-    forecast_dates = pd.date_range(start=today, periods=30)
-
-    for forecast_date in forecast_dates:
-        cursor.execute("""
-            INSERT INTO predictions.demand_forecasts
-            (forecast_date, product_name, forecasted_revenue, model_type)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (forecast_date, product_name) DO UPDATE
-            SET forecasted_revenue = EXCLUDED.forecasted_revenue,
-                created_at = NOW()
-        """, (forecast_date.date(), 'Overall', float(recent_avg), 'Moving Average'))
-
-    conn.commit()
-    print(f"   ✅ Overall forecast: ~${recent_avg:,.2f}/day for next 30 days")
-else:
-    print("   ⚠️  Not enough data for overall forecast (need at least 7 days)")
-
-# Product-level forecasts
-print("\n   Forecasting top products...")
-top_products = df_products.groupby('product_name')['revenue'].sum().nlargest(10)
-forecast_count = 0
-
-for product in top_products.index:
-    try:
-        product_data = df_products[df_products['product_name'] == product].copy()
-
-        # Aggregate by date and sort
-        daily_data = product_data.groupby('date').agg({
-            'quantity_sold': 'sum',
-            'revenue': 'sum'
-        }).sort_index()
-
-        if len(daily_data) >= 7:
-            # 7-day moving average
-            recent_quantity = daily_data.tail(7)['quantity_sold'].mean()
-            recent_revenue = daily_data.tail(7)['revenue'].mean()
-
-            # Generate 7-day forecast starting from TODAY
-            today = datetime.now().date()
-            forecast_dates = pd.date_range(start=today, periods=7)
-
-            for forecast_date in forecast_dates:
-                cursor.execute("""
-                    INSERT INTO predictions.demand_forecasts
-                    (forecast_date, product_name, forecasted_quantity, forecasted_revenue, model_type)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (forecast_date, product_name) DO UPDATE
-                    SET forecasted_quantity = EXCLUDED.forecasted_quantity,
-                        forecasted_revenue = EXCLUDED.forecasted_revenue,
-                        created_at = NOW()
-                """, (forecast_date.date(), product, float(recent_quantity), float(recent_revenue), 'Moving Average'))
-
-            forecast_count += 1
-            print(f"   ✅ {product}: ~{recent_quantity:.1f} units/day, ${recent_revenue:.2f}/day")
-
-    except Exception as e:
-        print(f"   ⚠️  Error forecasting {product}: {e}")
-
-conn.commit()
-print(f"\n   ✅ Successfully forecasted {forecast_count} products")
-
-# ============================================================================
-# 3B. LSTM FORECASTING (if TensorFlow available)
-# ============================================================================
-
-print("\n" + "=" * 80)
-print("🧠 Step 3B: Training LSTM model (deep learning)...")
+print("🧠 Step 3: Training LSTM model (deep learning)...")
 print("=" * 80)
 
 try:
@@ -286,14 +209,20 @@ try:
         print(f"      Average forecast: ${forecasted_revenue.mean():,.2f}/day")
 
     else:
-        print(f"   ⚠️  Need at least 60 days for LSTM (have {len(df_sales)} days)")
+        print(f"   ❌ ERROR: Need at least 60 days of data for LSTM (have {len(df_sales)} days)")
+        print(f"   Please import more historical data to train the model.")
+        sys.exit(1)
 
 except ImportError:
-    print("   ⚠️  TensorFlow not installed. Using Moving Average only.")
+    print("   ❌ ERROR: TensorFlow not installed.")
     print("      Install with: pip install tensorflow")
+    print("      Or: pip install tensorflow scikit-learn")
+    sys.exit(1)
 except Exception as e:
-    print(f"   ⚠️  LSTM training error: {e}")
-    print("      Continuing with Moving Average forecasts...")
+    print(f"   ❌ LSTM training error: {e}")
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
 
 # ============================================================================
 # 4. CUSTOMER SEGMENTATION (SIMPLE RFM)
@@ -429,9 +358,9 @@ if summary:
         print(f"   Total forecasted revenue: ${summary[2]:,.2f}")
 
 print("\n💡 Next steps:")
-print("   1. Refresh your dashboard to see forecasts")
+print("   1. Refresh your dashboard to see LSTM forecasts")
 print("   2. Run this script weekly to keep predictions updated")
-print("   3. Optional: Install tensorflow for LSTM models (pip install tensorflow)")
+print("   3. Monitor model performance and retrain as needed")
 
 print("\n" + "=" * 80)
 

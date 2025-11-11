@@ -621,7 +621,7 @@ class ModernDashboard:
             AND product_name NOT LIKE '%LSTM%'
             GROUP BY product_name, model_type
             ORDER BY avg_revenue DESC
-            LIMIT 5
+            LIMIT 10
         """)
 
         logger.info(f"Forecast query returned {len(forecast_df)} rows")

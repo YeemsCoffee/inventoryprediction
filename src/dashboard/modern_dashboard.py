@@ -597,20 +597,37 @@ class ModernDashboard:
                 ], className='alert alert-warning')
             )
 
-        # Forecasts
+        # Forecasts - Show top products
         forecast_df = self.query_db("""
-            SELECT product_name, COALESCE(AVG(forecasted_revenue), 0) as forecast
+            SELECT
+                product_name,
+                COALESCE(AVG(forecasted_quantity), 0) as avg_quantity,
+                COALESCE(AVG(forecasted_revenue), 0) as avg_revenue,
+                model_type
             FROM predictions.demand_forecasts
             WHERE forecast_date >= CURRENT_DATE
             AND forecast_date <= CURRENT_DATE + INTERVAL '7 days'
-            GROUP BY product_name
-            ORDER BY forecast DESC
-            LIMIT 1
+            AND product_name NOT LIKE '%LSTM%'
+            GROUP BY product_name, model_type
+            ORDER BY avg_revenue DESC
+            LIMIT 5
         """)
 
         if not forecast_df.empty:
-            product = forecast_df.iloc[0]['product_name']
-            revenue = forecast_df.iloc[0]['forecast']
+            # Create forecast list
+            forecast_items = []
+            for _, row in forecast_df.iterrows():
+                product = row['product_name']
+                qty = row['avg_quantity']
+                revenue = row['avg_revenue']
+
+                forecast_items.append(
+                    html.Div([
+                        html.Span(f"• {product}: ", style={'fontWeight': '500'}),
+                        html.Span(f"{qty:.0f} units/day (${revenue:,.0f}/day)")
+                    ], style={'marginBottom': '4px'})
+                )
+
             insights.append(
                 html.Div([
                     html.I(className="fas fa-chart-line", style={
@@ -618,8 +635,8 @@ class ModernDashboard:
                         'color': self.colors['info']['500']
                     }),
                     html.Div([
-                        html.Strong("Top Forecast", style={'display': 'block'}),
-                        html.Span(f"{product} - ${revenue:,.0f}/day next week")
+                        html.Strong("Product Forecasts (Next 7 Days)", style={'display': 'block', 'marginBottom': '8px'}),
+                        html.Div(forecast_items)
                     ], style={'flex': '1'})
                 ], className='alert alert-info')
             )

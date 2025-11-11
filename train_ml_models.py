@@ -283,17 +283,24 @@ try:
             future = model.make_future_dataframe(periods=30)
             forecast = model.predict(future)
 
-            # Get only future predictions (from today forward)
-            today = datetime.now().date()
-            future_forecast = forecast[forecast['ds'] >= pd.Timestamp(today)].head(30)
+            # Get only the FUTURE predictions (last 30 rows = the forecasted period)
+            # Don't filter by today's date since historical data might be old
+            future_forecast = forecast.tail(30)
 
             # Calculate average unit price for revenue estimation
             avg_price = daily_data['revenue'].sum() / daily_data['quantity_sold'].sum()
 
             # Save forecasts to database
-            for _, row in future_forecast.iterrows():
-                forecasted_qty = max(0, row['yhat'])  # Don't allow negative forecasts
+            # Use sequential forecast dates starting from TODAY (for dashboard display)
+            today = datetime.now().date()
+
+            for i, row in enumerate(future_forecast.iterrows()):
+                _, forecast_row = row
+                forecasted_qty = max(0, forecast_row['yhat'])  # Don't allow negative forecasts
                 forecasted_rev = forecasted_qty * avg_price
+
+                # Use today + i days (so forecasts show in dashboard)
+                forecast_date = today + timedelta(days=i)
 
                 cursor.execute("""
                     INSERT INTO predictions.demand_forecasts
@@ -304,7 +311,7 @@ try:
                         forecasted_revenue = EXCLUDED.forecasted_revenue,
                         model_type = EXCLUDED.model_type,
                         created_at = NOW()
-                """, (row['ds'].date(), product_name, float(forecasted_qty), float(forecasted_rev), 'Prophet'))
+                """, (forecast_date, product_name, float(forecasted_qty), float(forecasted_rev), 'Prophet'))
 
             conn.commit()
             successful_forecasts += 1

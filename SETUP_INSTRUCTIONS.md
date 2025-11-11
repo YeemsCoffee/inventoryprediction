@@ -93,6 +93,17 @@ python scripts/sync_square_to_postgres.py --days 90 --oldest
 - `--days 90` - Fetch 90 days of data
 - `--oldest` - Start from the oldest data first (chronological order)
 
+**⚠️ If you have mixed/incorrect data from previous failed syncs:**
+
+Clear all data first, then re-sync:
+```bash
+# Clear all existing data
+python scripts/clear_all_data.py
+
+# Re-sync fresh
+python scripts/sync_square_to_postgres.py --days 90 --oldest
+```
+
 ---
 
 ### 5. Transform Data (Bronze → Silver → Gold)
@@ -116,6 +127,36 @@ python scripts/ml_customer_trends.py
 ---
 
 ## Troubleshooting
+
+### Problem: Dashboard showing incorrect dates (Oct-Nov 2025 instead of Dec 2022)
+
+**Cause:** Old data from previous failed sync attempts is still in the database. Each sync adds more data, creating a mix of test/incorrect data.
+
+**Solution:**
+1. Clear all existing data:
+   ```bash
+   python scripts/clear_all_data.py
+   ```
+
+2. Verify your `.env` settings:
+   ```bash
+   SQUARE_ACCESS_TOKEN=<your_production_token>
+   SQUARE_ENVIRONMENT=production
+   ```
+
+3. Re-sync fresh data:
+   ```bash
+   python scripts/sync_square_to_postgres.py --days 90 --oldest
+   ```
+
+4. Verify the dates are correct:
+   ```bash
+   python scripts/check_dates_in_db.py
+   ```
+
+You should see dates from Nov 2022 - Feb 2023 (or your actual historical data range).
+
+---
 
 ### Problem: "unsupported operand type(s) for -: 'float' and 'NoneType'"
 

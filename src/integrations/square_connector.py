@@ -191,6 +191,15 @@ class SquareDataConnector:
                     else:
                         product_name = 'Unknown Product'
 
+                # Safe extraction with None handling
+                quantity_raw = item.get('quantity', 1)
+                quantity = int(quantity_raw) if quantity_raw is not None else 1
+
+                # Handle total_money which might be None or have None amount
+                total_money = item.get('total_money', {}) or {}
+                amount = total_money.get('amount')
+                price = float(amount) / 100 if amount is not None else 0.0
+
                 rows.append({
                     'order_id': order_id,
                     'date': created_at,
@@ -198,8 +207,8 @@ class SquareDataConnector:
                     'location_id': location_id,
                     'product': product_name,
                     'item_type': item_type,
-                    'quantity': int(item.get('quantity', 1)),
-                    'price': float(item.get('total_money', {}).get('amount', 0)) / 100,
+                    'quantity': quantity,
+                    'price': price,
                     'category': item.get('catalog_object_id'),
                     'variation_id': item.get('catalog_object_id')
                 })

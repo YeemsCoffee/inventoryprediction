@@ -142,16 +142,21 @@ class ModernDashboard:
     def query_db(self, query: str, params=None) -> pd.DataFrame:
         """Execute query with error handling."""
         try:
+            from sqlalchemy import text
             engine = self.db_engine.get_engine()
-            # Only pass params if they're actually provided to avoid SQLAlchemy immutabledict issues
+
+            # Use text() to properly wrap the query for SQLAlchemy 2.0+
             if params is not None:
-                df = pd.read_sql_query(query, engine, params=params)
+                df = pd.read_sql_query(text(query), engine, params=params)
             else:
-                df = pd.read_sql_query(query, engine)
+                df = pd.read_sql_query(text(query), engine)
+
             logger.debug(f"Query returned {len(df)} rows")
             return df
         except Exception as e:
             logger.error(f"Query failed: {e}\nQuery: {query[:200]}...")
+            import traceback
+            logger.error(traceback.format_exc())
             return pd.DataFrame()
 
     def get_locations(self) -> list:

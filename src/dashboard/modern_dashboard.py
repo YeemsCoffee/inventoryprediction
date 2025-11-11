@@ -32,8 +32,7 @@ import os
 import logging
 from functools import lru_cache
 from contextlib import contextmanager
-import psycopg2
-from psycopg2 import pool
+from sqlalchemy import create_engine, pool
 from dotenv import load_dotenv
 import traceback
 
@@ -49,50 +48,43 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class DatabasePool:
-    """Thread-safe connection pool manager."""
+class DatabaseEngine:
+    """SQLAlchemy engine manager for pandas compatibility."""
 
     _instance = None
-    _pool = None
+    _engine = None
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def initialize(self, database_url, min_conn=2, max_conn=10):
-        """Initialize connection pool."""
-        if self._pool is None:
+    def initialize(self, database_url, pool_size=10, max_overflow=20):
+        """Initialize SQLAlchemy engine."""
+        if self._engine is None:
             try:
-                self._pool = pool.ThreadedConnectionPool(
-                    min_conn, max_conn, database_url
+                self._engine = create_engine(
+                    database_url,
+                    poolclass=pool.QueuePool,
+                    pool_size=pool_size,
+                    max_overflow=max_overflow,
+                    pool_pre_ping=True,  # Verify connections before using
+                    echo=False  # Set to True for SQL logging
                 )
-                logger.info(f"Database pool initialized ({min_conn}-{max_conn} connections)")
+                logger.info(f"Database engine initialized (pool_size={pool_size}, max_overflow={max_overflow})")
             except Exception as e:
-                logger.error(f"Failed to create connection pool: {e}")
+                logger.error(f"Failed to create database engine: {e}")
                 raise
 
-    @contextmanager
-    def get_connection(self):
-        """Context manager for safe connection handling."""
-        conn = None
-        try:
-            conn = self._pool.getconn()
-            yield conn
-        except Exception as e:
-            logger.error(f"Database error: {e}")
-            if conn:
-                conn.rollback()
-            raise
-        finally:
-            if conn:
-                self._pool.putconn(conn)
+    def get_engine(self):
+        """Get SQLAlchemy engine for pandas."""
+        return self._engine
 
-    def close_all(self):
-        """Close all connections."""
-        if self._pool:
-            self._pool.closeall()
-            logger.info("All database connections closed")
+    def dispose(self):
+        """Dispose engine and close all connections."""
+        if self._engine:
+            self._engine.dispose()
+            logger.info("Database engine disposed")
 
 
 class ModernDashboard:
@@ -105,9 +97,9 @@ class ModernDashboard:
         self.tokens = DesignTokens()
         self.colors = get_theme(theme)
 
-        # Initialize connection pool
-        self.db_pool = DatabasePool()
-        self.db_pool.initialize(database_url)
+        # Initialize SQLAlchemy engine
+        self.db_engine = DatabaseEngine()
+        self.db_engine.initialize(database_url)
 
         # Plotly chart colors matching design system
         self.chart_colors = {
@@ -150,10 +142,10 @@ class ModernDashboard:
     def query_db(self, query: str, params=None) -> pd.DataFrame:
         """Execute query with error handling."""
         try:
-            with self.db_pool.get_connection() as conn:
-                df = pd.read_sql_query(query, conn, params=params)
-                logger.debug(f"Query returned {len(df)} rows")
-                return df
+            engine = self.db_engine.get_engine()
+            df = pd.read_sql_query(query, engine, params=params)
+            logger.debug(f"Query returned {len(df)} rows")
+            return df
         except Exception as e:
             logger.error(f"Query failed: {e}\nQuery: {query[:200]}...")
             return pd.DataFrame()
@@ -1136,7 +1128,7 @@ class ModernDashboard:
             logger.info(f"Starting modern dashboard on {host}:{port}")
             self.app.run(host=host, port=port, debug=debug)
         finally:
-            self.db_pool.close_all()
+            self.db_engine.dispose()
 
 
 if __name__ == "__main__":

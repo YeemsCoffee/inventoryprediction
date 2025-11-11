@@ -1,5 +1,41 @@
 /* Enhanced Date Picker Theming */
 
+/* Fix calendar layout and spacing */
+.CalendarMonth {
+    padding: 0 !important;
+}
+
+.CalendarMonth_table {
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+}
+
+/* Fix day header and date cell overlap */
+.DayPicker_weekHeader {
+    top: 50px !important;
+}
+
+.DayPicker_weekHeader_ul {
+    display: flex !important;
+    justify-content: space-around !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.DayPicker_weekHeader_li {
+    flex: 1 !important;
+    text-align: center !important;
+    padding: 8px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+}
+
+.CalendarDay {
+    padding: 8px !important;
+    text-align: center !important;
+    border: 1px solid transparent !important;
+}
+
 /* Date picker hover states */
 .DateRangePicker .CalendarMonth_caption:hover {
     background-color: rgba(99, 102, 241, 0.1) !important;
@@ -31,14 +67,17 @@
 }
 
 .CalendarMonth_caption {
-    padding: 4px 8px;
+    padding: 4px 8px !important;
     transition: background-color 0.15s ease;
+    font-weight: 600 !important;
+    text-align: center !important;
+    cursor: pointer !important;
 }
 
 /* Make date picker more visible */
 .DateInput_input {
-    font-size: 14px;
-    padding: 8px 12px;
+    font-size: 14px !important;
+    padding: 8px 12px !important;
 }
 
 /* Custom picker animations */
@@ -57,19 +96,19 @@
     }
 }
 
-/* Better visual feedback */
+/* Better visual feedback - show dropdown indicator */
 .CalendarMonth_caption {
     position: relative;
 }
 
 .CalendarMonth_caption::after {
     content: '▼';
-    font-size: 10px;
-    margin-left: 6px;
-    opacity: 0;
+    font-size: 10px !important;
+    margin-left: 6px !important;
+    opacity: 0.4 !important;
     transition: opacity 0.15s;
 }
 
 .CalendarMonth_caption:hover::after {
-    opacity: 0.6;
+    opacity: 0.8 !important;
 }

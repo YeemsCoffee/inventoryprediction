@@ -260,10 +260,13 @@ class ModernDashboard:
                                 start_date=default_start,
                                 end_date=max_date,
                                 display_format='MMM DD, YYYY',
-                                month_format='MMMM YYYY',  # Show full month name and year
-                                show_outside_days=True,  # Show dates from adjacent months
-                                minimum_nights=0,  # Allow same-day selection
-                                initial_visible_month=min_date if min_date else default_start,  # Start at earliest date
+                                with_portal=False,
+                                with_full_screen_portal=False,
+                                clearable=True,
+                                number_of_months_shown=1,
+                                stay_open_on_select=False,
+                                reopen_calendar_on_clear=True,
+                                initial_visible_month=default_start if default_start else min_date,
                                 style={'width': '100%'}
                             )
                         ], lg=4, md=6, xs=12, className='mb-3 mb-lg-0'),

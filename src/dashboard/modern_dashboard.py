@@ -501,7 +501,15 @@ class ModernDashboard:
                         'success': self.colors['success']['500'],
                         'warning': self.colors['warning']['500'],
                         'danger': self.colors['danger']['500'],
-                        'info': self.colors['info']['500']
+                        'info': self.colors['info']['500'],
+                        'neutral': [
+                            self.colors['primary']['500'],
+                            self.colors['info']['500'],
+                            self.colors['success']['500'],
+                            self.colors['warning']['500'],
+                            self.colors['secondary']['400'],
+                            self.colors['primary']['300'],
+                        ]
                     }
 
                 loc_filter = "" if location == 'all' else f"AND dl.location_id = '{location}'"

@@ -147,7 +147,8 @@ try:
 
         # Build LSTM model
         model = keras.Sequential([
-            layers.LSTM(50, return_sequences=True, input_shape=(lookback, 1)),
+            layers.Input(shape=(lookback, 1)),
+            layers.LSTM(50, return_sequences=True),
             layers.Dropout(0.2),
             layers.LSTM(50, return_sequences=False),
             layers.Dropout(0.2),

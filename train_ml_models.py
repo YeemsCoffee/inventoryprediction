@@ -206,26 +206,43 @@ df_customers = pd.read_sql(customer_query, engine)
 print(f"   Analyzing {len(df_customers)} customers...")
 
 if len(df_customers) > 0:
-    # Simple RFM scoring
-    df_customers['r_score'] = pd.qcut(df_customers['recency_days'], q=4, labels=[4, 3, 2, 1], duplicates='drop')
-    df_customers['f_score'] = pd.qcut(df_customers['frequency'].rank(method='first'), q=4, labels=[1, 2, 3, 4], duplicates='drop')
-    df_customers['m_score'] = pd.qcut(df_customers['monetary'].rank(method='first'), q=4, labels=[1, 2, 3, 4], duplicates='drop')
+    # Simple RFM scoring using percentiles (more robust than qcut)
+    df_customers['r_score'] = pd.cut(df_customers['recency_days'],
+                                      bins=[-1, 7, 30, 90, float('inf')],
+                                      labels=[4, 3, 2, 1])
+
+    # Frequency score based on order count
+    df_customers['f_score'] = pd.cut(df_customers['frequency'],
+                                      bins=[0, 1, 3, 6, float('inf')],
+                                      labels=[1, 2, 3, 4])
+
+    # Monetary score based on revenue
+    median_revenue = df_customers['monetary'].median()
+    mean_revenue = df_customers['monetary'].mean()
+    df_customers['m_score'] = pd.cut(df_customers['monetary'],
+                                      bins=[0, median_revenue*0.5, median_revenue, mean_revenue, float('inf')],
+                                      labels=[1, 2, 3, 4])
 
     # Assign segments based on RFM scores
     def assign_segment(row):
-        r, f, m = int(row['r_score']), int(row['f_score']), int(row['m_score'])
-        avg_score = (r + f + m) / 3
+        try:
+            r = int(row['r_score']) if pd.notna(row['r_score']) else 2
+            f = int(row['f_score']) if pd.notna(row['f_score']) else 2
+            m = int(row['m_score']) if pd.notna(row['m_score']) else 2
+            avg_score = (r + f + m) / 3
 
-        if avg_score >= 3.5:
-            return 'High Value'
-        elif avg_score >= 3.0:
-            return 'Loyal'
-        elif avg_score >= 2.0:
-            return 'Potential'
-        elif r <= 2:
-            return 'At Risk'
-        else:
-            return 'New'
+            if avg_score >= 3.5:
+                return 'High Value'
+            elif avg_score >= 3.0:
+                return 'Loyal'
+            elif avg_score >= 2.0:
+                return 'Potential'
+            elif r <= 2:
+                return 'At Risk'
+            else:
+                return 'New'
+        except:
+            return 'Unknown'
 
     df_customers['segment'] = df_customers.apply(assign_segment, axis=1)
 

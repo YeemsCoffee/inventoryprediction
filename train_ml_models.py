@@ -24,7 +24,7 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.models.advanced_forecaster import AdvancedForecaster
-from src.models.customer_behavior import CustomerBehaviorAnalyzer
+from src.models.customer_behavior import CustomerBehaviorPredictor
 from src.models.segmentation import CustomerSegmentation
 
 print("=" * 80)

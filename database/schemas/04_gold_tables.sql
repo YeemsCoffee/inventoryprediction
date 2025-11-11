@@ -200,6 +200,7 @@ SELECT
 FROM gold.fact_sales
 GROUP BY product_sk, date_key, location_sk;
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_perf_unique ON gold.product_performance(product_sk, date_key, location_sk);
 CREATE INDEX IF NOT EXISTS idx_product_perf_product ON gold.product_performance(product_sk, date_key);
 
 COMMENT ON MATERIALIZED VIEW gold.product_performance IS 'Product sales performance metrics';

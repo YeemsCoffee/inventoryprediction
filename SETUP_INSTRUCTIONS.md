@@ -117,6 +117,31 @@ python scripts/ml_customer_trends.py
 
 ## Troubleshooting
 
+### Problem: "cannot refresh materialized view concurrently"
+
+**Example error:**
+```
+cannot refresh materialized view "gold.product_performance" concurrently
+HINT:  Create a unique index with no WHERE clause on one or more columns of the materialized view.
+```
+
+**Cause:** Materialized views need unique indexes to support concurrent refresh.
+
+**Solution:**
+Run the fix script:
+```bash
+python scripts/fix_materialized_views.py
+```
+
+This will create the missing unique indexes. Then retry the sync:
+```bash
+python scripts/sync_square_to_postgres.py --days 90 --oldest
+```
+
+**Note:** If you ran `setup_database.py` after this fix was added, indexes are created automatically.
+
+---
+
 ### Problem: "no partition of relation 'fact_sales' found for row"
 
 **Example error:**

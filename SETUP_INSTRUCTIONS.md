@@ -68,7 +68,19 @@ python scripts/setup_database.py
 
 ---
 
-### 3. Sync Square Data
+### 3. Create Partitions (If Needed)
+
+If you see an error about missing partitions:
+
+```bash
+python scripts/create_partitions.py
+```
+
+This script creates partitions for `gold.fact_sales` from 2020-2027. The setup script now does this automatically, but this standalone script is available if you need to add more partitions.
+
+---
+
+### 4. Sync Square Data
 
 Once the database is set up, sync your Square POS data:
 
@@ -83,7 +95,7 @@ python scripts/sync_square_to_postgres.py --days 90 --oldest
 
 ---
 
-### 4. Transform Data (Bronze → Silver → Gold)
+### 5. Transform Data (Bronze → Silver → Gold)
 
 After syncing, transform the data through the layers:
 
@@ -93,7 +105,7 @@ python scripts/transform_data.py
 
 ---
 
-### 5. Generate ML Predictions
+### 6. Generate ML Predictions
 
 Finally, run customer trend analysis:
 
@@ -104,6 +116,31 @@ python scripts/ml_customer_trends.py
 ---
 
 ## Troubleshooting
+
+### Problem: "no partition of relation 'fact_sales' found for row"
+
+**Example error:**
+```
+no partition of relation "fact_sales" found for row
+DETAIL:  Partition key of the failing row contains (date_key) = (20221224).
+```
+
+**Cause:** The `gold.fact_sales` table is partitioned by year, but no partition exists for the date in your data.
+
+**Solution:**
+Run the partition creation script:
+```bash
+python scripts/create_partitions.py
+```
+
+This will create partitions for years 2020-2027. Then retry the sync:
+```bash
+python scripts/sync_square_to_postgres.py --days 90 --oldest
+```
+
+**Note:** If you ran `setup_database.py` after this fix was added, partitions are created automatically.
+
+---
 
 ### Problem: "could not translate host name to address"
 

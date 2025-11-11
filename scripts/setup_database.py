@@ -281,8 +281,58 @@ def run_setup():
             print("✅ Gold layer tables created manually")
         print()
 
+        # Create fact_sales partitions if table is partitioned
+        print("📅 Step 6: Creating fact_sales partitions...")
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT 1 FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'gold'
+                AND c.relname = 'fact_sales'
+                AND c.relkind = 'p'  -- 'p' = partitioned table
+            );
+        """)
+        is_partitioned = cursor.fetchone()[0]
+
+        if is_partitioned:
+            print("✅ fact_sales is partitioned, creating partitions...")
+
+            # Define partitions to create (from 2020 onwards)
+            years_to_create = [
+                (2020, 20200101, 20210101),
+                (2021, 20210101, 20220101),
+                (2022, 20220101, 20230101),  # Critical: data from Dec 2022!
+                (2023, 20230101, 20240101),
+                (2024, 20240101, 20250101),
+                (2025, 20250101, 20260101),
+                (2026, 20260101, 20270101),
+                (2027, 20270101, 20280101),
+            ]
+
+            partition_count = 0
+            for year, start_key, end_key in years_to_create:
+                partition_name = f"gold.fact_sales_{year}"
+                try:
+                    cursor.execute(f"""
+                        CREATE TABLE IF NOT EXISTS {partition_name}
+                            PARTITION OF gold.fact_sales
+                            FOR VALUES FROM ({start_key}) TO ({end_key});
+                    """)
+                    conn.commit()
+                    partition_count += 1
+                except Exception as e:
+                    conn.rollback()
+                    # Reconnect if needed
+                    conn = psycopg2.connect(database_url)
+                    cursor = conn.cursor()
+
+            print(f"✅ Created/verified {partition_count} partitions (2020-2027)")
+        else:
+            print("⏭️  fact_sales is not partitioned, skipping partition creation")
+        print()
+
         # Verify customer_id column exists
-        print("🔍 Step 6: Verifying customer_id column...")
+        print("🔍 Step 7: Verifying customer_id column...")
         cursor.execute("""
             SELECT EXISTS(
                 SELECT 1 FROM information_schema.columns

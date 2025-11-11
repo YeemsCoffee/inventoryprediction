@@ -143,7 +143,11 @@ class ModernDashboard:
         """Execute query with error handling."""
         try:
             engine = self.db_engine.get_engine()
-            df = pd.read_sql_query(query, engine, params=params)
+            # Only pass params if they're actually provided to avoid SQLAlchemy immutabledict issues
+            if params is not None:
+                df = pd.read_sql_query(query, engine, params=params)
+            else:
+                df = pd.read_sql_query(query, engine)
             logger.debug(f"Query returned {len(df)} rows")
             return df
         except Exception as e:

@@ -373,7 +373,7 @@ class SquareToPostgresSync:
                 is_current
             FROM silver.customers
             WHERE is_current = TRUE
-            ON CONFLICT ON CONSTRAINT idx_dim_customer_current DO NOTHING
+            ON CONFLICT (customer_id) WHERE is_current DO NOTHING
         """)
 
         # dim_product

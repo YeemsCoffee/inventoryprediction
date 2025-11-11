@@ -128,6 +128,25 @@ python scripts/ml_customer_trends.py
 
 ## Troubleshooting
 
+### Problem: "pandas only supports SQLAlchemy connectable"
+
+**Full error:**
+```
+pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+```
+
+**Cause:** The dashboard was using raw psycopg2 connections with pandas, which is no longer supported in newer pandas versions.
+
+**Solution:**
+This has been fixed in the latest code. Pull the latest changes:
+```bash
+git pull origin claude/ml-customer-trends-011CUu4anbpoMjhk4jFeo5qE
+```
+
+The dashboard now uses SQLAlchemy engine for database connections, which is fully compatible with pandas.
+
+---
+
 ### Problem: Dashboard showing incorrect dates (Oct-Nov 2025 instead of Dec 2022)
 
 **Cause:** Old data from previous failed sync attempts is still in the database. Each sync adds more data, creating a mix of test/incorrect data.

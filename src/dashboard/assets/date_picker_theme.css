@@ -1,0 +1,114 @@
+/* Enhanced Date Picker Theming */
+
+/* Fix calendar layout and spacing */
+.CalendarMonth {
+    padding: 0 !important;
+}
+
+.CalendarMonth_table {
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+}
+
+/* Fix day header and date cell overlap */
+.DayPicker_weekHeader {
+    top: 50px !important;
+}
+
+.DayPicker_weekHeader_ul {
+    display: flex !important;
+    justify-content: space-around !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.DayPicker_weekHeader_li {
+    flex: 1 !important;
+    text-align: center !important;
+    padding: 8px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+}
+
+.CalendarDay {
+    padding: 8px !important;
+    text-align: center !important;
+    border: 1px solid transparent !important;
+}
+
+/* Date picker hover states */
+.DateRangePicker .CalendarMonth_caption:hover {
+    background-color: rgba(99, 102, 241, 0.1) !important;
+    border-radius: 4px;
+}
+
+/* Custom month/year picker for dark theme */
+[data-theme="dark"] .custom-month-year-picker {
+    background: #1E293B !important;
+    border-color: #334155 !important;
+    color: #F9FAFB !important;
+}
+
+[data-theme="dark"] .custom-month-year-picker button {
+    background: #334155 !important;
+    border-color: #475569 !important;
+    color: #F9FAFB !important;
+}
+
+[data-theme="dark"] .custom-month-year-picker button:hover {
+    background: #6366f1 !important;
+    border-color: #6366f1 !important;
+    color: white !important;
+}
+
+/* Date picker improvements */
+.DateRangePicker_picker {
+    z-index: 1100 !important;
+}
+
+.CalendarMonth_caption {
+    padding: 4px 8px !important;
+    transition: background-color 0.15s ease;
+    font-weight: 600 !important;
+    text-align: center !important;
+    cursor: pointer !important;
+}
+
+/* Make date picker more visible */
+.DateInput_input {
+    font-size: 14px !important;
+    padding: 8px 12px !important;
+}
+
+/* Custom picker animations */
+.custom-month-year-picker {
+    animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Better visual feedback - show dropdown indicator */
+.CalendarMonth_caption {
+    position: relative;
+}
+
+.CalendarMonth_caption::after {
+    content: '▼';
+    font-size: 10px !important;
+    margin-left: 6px !important;
+    opacity: 0.4 !important;
+    transition: opacity 0.15s;
+}
+
+.CalendarMonth_caption:hover::after {
+    opacity: 0.8 !important;
+}

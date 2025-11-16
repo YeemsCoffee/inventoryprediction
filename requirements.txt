@@ -25,6 +25,22 @@ sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.9  # PostgreSQL driver for Amazon RDS
 pymysql>=1.1.0  # MySQL driver for Amazon RDS
 
+# PostgreSQL
+psycopg2-binary>=2.9.9
+asyncpg>=0.29.0  # Async PostgreSQL driver
+
+# dbt for data transformations
+dbt-core>=1.7.0
+dbt-postgres>=1.7.0
+
+# Orchestration
+dagster>=1.6.0
+dagster-postgres>=0.22.0
+dagster-webserver>=1.6.0
+
+# Data Quality
+great-expectations>=0.18.0
+
 # Square API Integration
 requests>=2.31.0
 python-dotenv>=1.0.0

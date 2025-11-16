@@ -22,6 +22,8 @@ dash-bootstrap-components>=1.5.0
 # Data Processing
 joblib>=1.3.0
 sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9  # PostgreSQL driver for Amazon RDS
+pymysql>=1.1.0  # MySQL driver for Amazon RDS
 
 # PostgreSQL
 psycopg2-binary>=2.9.9

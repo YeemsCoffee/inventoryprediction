@@ -139,7 +139,8 @@ class SquareDataConnector:
             response = requests.post(
                 f'{self.base_url}/v2/orders/search',
                 headers=self.headers,
-                json=query
+                json=query,
+                timeout=60  # 60 second timeout
             )
             response.raise_for_status()
 
@@ -171,14 +172,43 @@ class SquareDataConnector:
             line_items = order.get('line_items', [])
 
             for item in line_items:
+                # Determine product name - handle null cases intelligently
+                product_name = item.get('name')
+                item_type = item.get('item_type', 'ITEM')  # ITEM, CUSTOM_AMOUNT, GIFT_CARD
+
+                # If no name, create one based on context
+                if not product_name or not product_name.strip():
+                    # Check if it's a custom amount
+                    if item_type == 'CUSTOM_AMOUNT':
+                        product_name = 'Custom Amount'
+                    # Check for modifiers (tips, service charges)
+                    elif item.get('modifiers'):
+                        product_name = 'Modified Item'
+                    # Check if it has catalog object (should have name but doesn't)
+                    elif item.get('catalog_object_id'):
+                        product_name = 'Catalog Item (Unnamed)'
+                    # Fallback
+                    else:
+                        product_name = 'Unknown Product'
+
+                # Safe extraction with None handling
+                quantity_raw = item.get('quantity', 1)
+                quantity = int(quantity_raw) if quantity_raw is not None else 1
+
+                # Handle total_money which might be None or have None amount
+                total_money = item.get('total_money', {}) or {}
+                amount = total_money.get('amount')
+                price = float(amount) / 100 if amount is not None else 0.0
+
                 rows.append({
                     'order_id': order_id,
                     'date': created_at,
                     'customer_id': customer_id,
                     'location_id': location_id,
-                    'product': item.get('name'),
-                    'quantity': int(item.get('quantity', 1)),
-                    'price': float(item.get('total_money', {}).get('amount', 0)) / 100,
+                    'product': product_name,
+                    'item_type': item_type,
+                    'quantity': quantity,
+                    'price': price,
                     'category': item.get('catalog_object_id'),
                     'variation_id': item.get('catalog_object_id')
                 })

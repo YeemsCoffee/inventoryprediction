@@ -98,6 +98,7 @@ class RDSConnector:
             customer_id VARCHAR(255),
             location_id VARCHAR(255),
             product VARCHAR(255),
+            item_type VARCHAR(50),
             amount INTEGER,
             price DECIMAL(10, 2),
             category VARCHAR(255),

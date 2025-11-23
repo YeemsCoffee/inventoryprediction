@@ -97,7 +97,9 @@ class RDSConnector:
             date TIMESTAMP NOT NULL,
             customer_id VARCHAR(255),
             location_id VARCHAR(255),
-            product VARCHAR(255),
+            product VARCHAR(500),
+            base_product VARCHAR(255),
+            modifiers TEXT,
             item_type VARCHAR(50),
             amount INTEGER,
             price DECIMAL(10, 2),
@@ -110,6 +112,7 @@ class RDSConnector:
         CREATE INDEX IF NOT EXISTS idx_date ON {table_name}(date);
         CREATE INDEX IF NOT EXISTS idx_customer ON {table_name}(customer_id);
         CREATE INDEX IF NOT EXISTS idx_product ON {table_name}(product);
+        CREATE INDEX IF NOT EXISTS idx_base_product ON {table_name}(base_product);
         """
 
         try:

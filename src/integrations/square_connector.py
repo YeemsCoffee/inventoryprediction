@@ -191,6 +191,32 @@ class SquareDataConnector:
                     else:
                         product_name = 'Unknown Product'
 
+                # Extract modifiers
+                modifiers = item.get('modifiers', [])
+                modifier_names = []
+                modifier_details = []
+
+                for mod in modifiers:
+                    mod_name = mod.get('name', '')
+                    if mod_name:
+                        modifier_names.append(mod_name)
+                        # Include modifier price if applicable
+                        mod_total = mod.get('total_money', {})
+                        mod_amount = mod_total.get('amount', 0)
+                        if mod_amount and mod_amount > 0:
+                            mod_price = float(mod_amount) / 100
+                            modifier_details.append(f"{mod_name} (+${mod_price:.2f})")
+                        else:
+                            modifier_details.append(mod_name)
+
+                # Create combined product name with modifiers
+                if modifier_names:
+                    product_with_modifiers = f"{product_name} ({', '.join(modifier_names)})"
+                    modifiers_str = ', '.join(modifier_details)
+                else:
+                    product_with_modifiers = product_name
+                    modifiers_str = ''
+
                 # Safe extraction with None handling
                 quantity_raw = item.get('quantity', 1)
                 quantity = int(quantity_raw) if quantity_raw is not None else 1
@@ -205,7 +231,9 @@ class SquareDataConnector:
                     'date': created_at,
                     'customer_id': customer_id,
                     'location_id': location_id,
-                    'product': product_name,
+                    'product': product_with_modifiers,  # Combined name with modifiers
+                    'base_product': product_name,  # Original product name
+                    'modifiers': modifiers_str,  # Modifier details
                     'item_type': item_type,
                     'quantity': quantity,
                     'price': price,

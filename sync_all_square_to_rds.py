@@ -136,12 +136,20 @@ def sync_all_square_to_rds(start_date: str, end_date: str):
     print("-" * 70)
 
     try:
-        app = CustomerTrendApp()
-        app.data = df
+        # Save database data to temporary CSV for ML app
+        temp_csv = 'data/raw/temp_rds_data.csv'
+        os.makedirs(os.path.dirname(temp_csv), exist_ok=True)
+        df.to_csv(temp_csv, index=False)
 
-        # Ensure date column is datetime
-        if 'date' in app.data.columns:
-            app.data['date'] = pd.to_datetime(app.data['date'])
+        # Initialize and load data through the app's proper method
+        app = CustomerTrendApp()
+        app.load_data_from_csv(
+            filepath=temp_csv,
+            date_column='date',
+            customer_column='customer_id',
+            amount_column='amount',
+            product_column='product'
+        )
 
         print("✅ Data loaded into ML pipeline")
         print()
@@ -174,6 +182,10 @@ def sync_all_square_to_rds(start_date: str, end_date: str):
             for idx, (product, row) in enumerate(top_products.iterrows(), 1):
                 print(f"{idx:2d}. {product}")
                 print(f"    Qty: {int(row['amount']):,} | Revenue: ${row['price']:,.2f}")
+
+        # Clean up temp file
+        if os.path.exists(temp_csv):
+            os.remove(temp_csv)
 
     except Exception as e:
         print(f"❌ ML Analysis error: {str(e)}")

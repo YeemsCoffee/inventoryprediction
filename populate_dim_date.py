@@ -58,41 +58,25 @@ def populate_dim_date(start_year=2020, end_year=2030):
             'is_weekend': date.weekday() >= 5
         })
 
-    # Insert in batches
-    batch_size = 100  # Reduced from 1000 to avoid SQL statement size limits
+    # Insert using parameterized queries to avoid SQL statement size limits
+    batch_size = 500  # Can use larger batches with parameterized queries
     total_inserted = 0
+
+    sql = """
+    INSERT INTO gold.dim_date (
+        date_key, full_date, year, quarter, month, month_name,
+        week, day_of_month, day_of_week, day_name, is_weekend
+    )
+    VALUES (:date_key, :full_date, :year, :quarter, :month, :month_name,
+            :week, :day_of_month, :day_of_week, :day_name, :is_weekend)
+    ON CONFLICT (date_key) DO NOTHING
+    """
 
     for i in range(0, len(date_data), batch_size):
         batch = date_data[i:i+batch_size]
 
-        # Build multi-row insert
-        values = []
-        for d in batch:
-            values.append(f"""(
-                {d['date_key']},
-                '{d['full_date']}',
-                {d['year']},
-                {d['quarter']},
-                {d['month']},
-                '{d['month_name']}',
-                {d['week']},
-                {d['day_of_month']},
-                {d['day_of_week']},
-                '{d['day_name']}',
-                {d['is_weekend']}
-            )""")
-
-        sql = f"""
-        INSERT INTO gold.dim_date (
-            date_key, full_date, year, quarter, month, month_name,
-            week, day_of_month, day_of_week, day_name, is_weekend
-        )
-        VALUES {','.join(values)}
-        ON CONFLICT (date_key) DO NOTHING
-        """
-
         with db.engine.begin() as conn:
-            conn.execute(text(sql))
+            conn.execute(text(sql), batch)
 
         total_inserted += len(batch)
         print(f"  Progress: {total_inserted:,} / {len(date_data):,} dates")

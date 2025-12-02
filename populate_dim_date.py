@@ -14,12 +14,12 @@ from sqlalchemy import text
 import pandas as pd
 
 
-def populate_dim_date(start_year=2020, end_year=2030):
+def populate_dim_date(start_year=2022, end_year=2030):
     """
     Populate date dimension with all dates in range.
 
     Args:
-        start_year: Starting year
+        start_year: Starting year (default 2022 - first sales date 07/01/2022)
         end_year: Ending year
     """
 

@@ -59,7 +59,7 @@ def populate_dim_date(start_year=2020, end_year=2030):
         })
 
     # Insert in batches
-    batch_size = 1000
+    batch_size = 100  # Reduced from 1000 to avoid SQL statement size limits
     total_inserted = 0
 
     for i in range(0, len(date_data), batch_size):

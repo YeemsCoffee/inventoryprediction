@@ -236,7 +236,7 @@ def track_pipeline_run(db: RDSConnector, forecasts_df, execution_time: float,
                 VALUES (
                     :model_name, :records_processed, :predictions_generated,
                     :execution_time, :status, :error_message,
-                    :parameters::jsonb
+                    CAST(:parameters AS jsonb)
                 )
             """)
 

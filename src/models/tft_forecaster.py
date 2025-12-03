@@ -98,8 +98,8 @@ class TFTForecaster:
             df_complete = df_complete.sort_values(['product', 'date'])
             df_complete['time_idx'] = (df_complete['date'] - df_complete['date'].min()).dt.days
 
-            # Encode products as integers
-            df_complete['product_id'] = pd.Categorical(df_complete['product']).codes
+            # Encode products as strings (TFT requires string type for categoricals)
+            df_complete['product_id'] = df_complete['product'].astype(str)
 
             # Split train/validation (80/20)
             max_time_idx = df_complete['time_idx'].max()
@@ -134,7 +134,8 @@ class TFTForecaster:
 
             self.training = training
             self.validation = validation
-            self.product_mapping = dict(enumerate(df_complete['product'].unique()))
+            # Store product list for forecast output
+            self.product_list = df_complete['product'].unique().tolist()
 
             return training, validation
 
@@ -292,8 +293,7 @@ class TFTForecaster:
             # Convert to DataFrame
             forecast_results = []
 
-            for i, product_id in enumerate(self.product_mapping.keys()):
-                product_name = self.product_mapping[product_id]
+            for i, product_name in enumerate(self.product_list):
                 product_preds = raw_predictions[i].cpu().numpy()
 
                 forecast_results.append({

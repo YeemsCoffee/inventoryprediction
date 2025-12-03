@@ -105,11 +105,9 @@ def main():
     print("-" * 70)
 
     app = CustomerTrendApp()
-    app.data = df
 
-    # Ensure date column is datetime
-    if 'date' in df.columns:
-        app.data['date'] = pd.to_datetime(app.data['date'])
+    # Load data through proper method for preprocessing
+    app.load_data_from_csv(output_path)
 
     print("✅ Data loaded successfully")
 

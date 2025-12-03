@@ -46,12 +46,12 @@ def populate_dim_date(start_year=2022, end_year=2030):
 
         date_data.append({
             'date_key': date_key,
-            'full_date': date.date(),
+            'date': date.date(),
             'year': date.year,
             'quarter': (date.month - 1) // 3 + 1,
             'month': date.month,
             'month_name': date.strftime('%B'),
-            'week': date.isocalendar()[1],
+            'week_of_year': date.isocalendar()[1],
             'day_of_month': date.day,
             'day_of_week': date.weekday(),  # 0 = Monday
             'day_name': date.strftime('%A'),
@@ -64,11 +64,11 @@ def populate_dim_date(start_year=2022, end_year=2030):
 
     sql = """
     INSERT INTO gold.dim_date (
-        date_key, full_date, year, quarter, month, month_name,
-        week, day_of_month, day_of_week, day_name, is_weekend
+        date_key, date, year, quarter, month, month_name,
+        week_of_year, day_of_month, day_of_week, day_name, is_weekend
     )
-    VALUES (:date_key, :full_date, :year, :quarter, :month, :month_name,
-            :week, :day_of_month, :day_of_week, :day_name, :is_weekend)
+    VALUES (:date_key, :date, :year, :quarter, :month, :month_name,
+            :week_of_year, :day_of_month, :day_of_week, :day_name, :is_weekend)
     ON CONFLICT (date_key) DO NOTHING
     """
 

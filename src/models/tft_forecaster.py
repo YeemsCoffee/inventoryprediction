@@ -171,6 +171,7 @@ class TFTForecaster:
         try:
             import torch
             from pytorch_forecasting import TemporalFusionTransformer
+            from pytorch_forecasting.metrics import QuantileLoss
             from pytorch_lightning import Trainer
             from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
             from torch.utils.data import DataLoader
@@ -203,7 +204,7 @@ class TFTForecaster:
                 attention_head_size=attention_head_size,
                 dropout=dropout,
                 hidden_continuous_size=hidden_continuous_size,
-                loss=torch.nn.MSELoss(),
+                loss=QuantileLoss(),  # PyTorch Lightning Metric for quantile predictions
                 log_interval=10,
                 reduce_on_plateau_patience=4,
             )

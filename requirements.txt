@@ -6,6 +6,9 @@ scipy>=1.11.0
 
 # Deep Learning
 tensorflow>=2.16.0
+torch>=2.0.0
+pytorch-lightning>=2.0.0
+pytorch-forecasting>=1.0.0
 
 # Advanced Time Series and Forecasting
 statsmodels>=0.14.0

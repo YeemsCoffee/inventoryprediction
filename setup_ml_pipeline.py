@@ -45,10 +45,10 @@ def setup_ml_pipeline():
     print()
 
     try:
-        # Step 1: Setup predictions schema
+        # Step 1: Setup predictions schema (drop existing for clean setup)
         print("STEP 1/2: Setting up predictions schema...")
         print("=" * 70)
-        setup_predictions_schema.setup_predictions_schema()
+        setup_predictions_schema.setup_predictions_schema(drop_existing=True)
         print()
 
         # Step 2: Run TFT pipeline

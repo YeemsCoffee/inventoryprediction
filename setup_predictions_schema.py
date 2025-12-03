@@ -12,8 +12,13 @@ from src.utils.database import RDSConnector
 from sqlalchemy import text
 
 
-def setup_predictions_schema():
-    """Create predictions schema and tables for ML outputs."""
+def setup_predictions_schema(drop_existing: bool = False):
+    """
+    Create predictions schema and tables for ML outputs.
+
+    Args:
+        drop_existing: If True, drop existing tables before creating new ones
+    """
 
     print("=" * 70)
     print("🔮 SETTING UP PREDICTIONS SCHEMA")
@@ -27,6 +32,15 @@ def setup_predictions_schema():
             # Create predictions schema
             print("📊 Creating predictions schema...")
             conn.execute(text("CREATE SCHEMA IF NOT EXISTS predictions"))
+
+            # Drop existing tables if requested
+            if drop_existing:
+                print("⚠️  Dropping existing tables...")
+                conn.execute(text("DROP TABLE IF EXISTS predictions.demand_forecasts CASCADE"))
+                conn.execute(text("DROP TABLE IF EXISTS predictions.customer_churn_scores CASCADE"))
+                conn.execute(text("DROP TABLE IF EXISTS predictions.customer_ltv_scores CASCADE"))
+                conn.execute(text("DROP TABLE IF EXISTS predictions.model_performance CASCADE"))
+                conn.execute(text("DROP TABLE IF EXISTS predictions.prediction_runs CASCADE"))
 
             # 1. Demand Forecasts Table (TFT output)
             print("📈 Creating demand_forecasts table...")
@@ -159,4 +173,12 @@ def setup_predictions_schema():
 
 
 if __name__ == "__main__":
-    setup_predictions_schema()
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Setup predictions schema')
+    parser.add_argument('--drop-existing', action='store_true',
+                       help='Drop existing tables before creating (recommended for clean setup)')
+
+    args = parser.parse_args()
+
+    setup_predictions_schema(drop_existing=args.drop_existing)

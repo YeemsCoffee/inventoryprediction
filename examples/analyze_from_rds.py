@@ -94,22 +94,27 @@ def main():
 
     print(f"✅ Retrieved {len(df)} transactions")
 
-    # Save to CSV for reference
-    output_path = 'data/raw/from_rds.csv'
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    df.to_csv(output_path, index=False)
-    print(f"💾 Data saved to: {output_path}")
-
     # Step 4: Run ML Analysis
     print("\n🤖 Running ML Analysis")
     print("-" * 70)
 
     app = CustomerTrendApp()
 
-    # Load data through proper method for preprocessing
-    app.load_data_from_csv(output_path)
+    # Load data directly from dataframe (same preprocessing as load_data_from_csv)
+    print("📊 Loading data from RDS...")
 
-    print("✅ Data loaded successfully")
+    # Ensure date column is datetime
+    df['date'] = pd.to_datetime(df['date'])
+
+    # Set data on the processor
+    app.data_processor.data = df
+    app.data = df
+
+    # Add temporal features (same as load_data_from_csv does)
+    app.processed_data = app.data_processor.add_temporal_features()
+
+    print(f"✅ Loaded {len(df)} transactions from RDS")
+    print("✅ Data preprocessing complete")
 
     # Generate comprehensive analysis
     print("\n🔮 Generating Full Report...")

@@ -14,6 +14,13 @@ from .models.forecaster import CustomerTrendForecaster
 from .models.segmentation import CustomerSegmentation
 from .visualization.charts import TrendVisualizer
 
+# Optional: TFT for advanced forecasting
+try:
+    from .models.tft_forecaster import TFTForecaster
+    TFT_AVAILABLE = True
+except ImportError:
+    TFT_AVAILABLE = False
+
 
 class CustomerTrendApp:
     """
@@ -149,13 +156,75 @@ class CustomerTrendApp:
         print("✅ Customer segmentation complete!\n")
         return results
 
-    def forecast_demand(self, periods: int = 30, frequency: str = 'D') -> Dict:
+    def forecast_demand_tft(self,
+                           periods: int = 30,
+                           max_epochs: int = 30,
+                           batch_size: int = 128) -> Dict:
         """
-        Forecast future demand.
+        Forecast future demand using Temporal Fusion Transformer (TFT).
+
+        TFT provides state-of-the-art multi-horizon forecasting with interpretability.
+        Best for complex temporal patterns and multiple products.
+
+        Args:
+            periods: Number of days to forecast
+            max_epochs: Maximum training epochs
+            batch_size: Training batch size
+
+        Returns:
+            Dictionary with TFT forecast results and variable importance
+        """
+        if self.processed_data is None:
+            raise ValueError("Load data first")
+
+        if not TFT_AVAILABLE:
+            print("⚠️  TFT not available. Install with:")
+            print("   pip install pytorch-forecasting torch pytorch-lightning")
+            print("\nFalling back to simple forecasting...")
+            return self.forecast_demand(periods, 'D')
+
+        print(f"🔮 Forecasting with Temporal Fusion Transformer (TFT)...")
+        print(f"   Training on {len(self.processed_data):,} transactions")
+
+        try:
+            # Initialize TFT forecaster
+            tft = TFTForecaster(self.processed_data)
+
+            # Train model
+            training_results = tft.train_tft(
+                max_epochs=max_epochs,
+                batch_size=batch_size,
+            )
+
+            # Generate forecasts
+            forecasts = tft.forecast(periods=periods)
+
+            # Get variable importance
+            variable_importance = tft.get_variable_importance()
+
+            results = {
+                'forecasts': forecasts,
+                'variable_importance': variable_importance,
+                'model': tft.model,
+                'method': 'Temporal Fusion Transformer'
+            }
+
+            print("✅ TFT forecasting complete!\n")
+            return results
+
+        except Exception as e:
+            print(f"⚠️  TFT failed: {str(e)}")
+            print("Falling back to simple forecasting...")
+            return self.forecast_demand(periods, 'D')
+
+    def forecast_demand(self, periods: int = 30, frequency: str = 'D', use_tft: bool = True) -> Dict:
+        """
+        Forecast future demand using best available method.
 
         Args:
             periods: Number of periods to forecast
             frequency: Forecast frequency ('D', 'W', 'M')
+            use_tft: Use TFT if available (recommended)
 
         Returns:
             Dictionary with forecast results
@@ -163,6 +232,11 @@ class CustomerTrendApp:
         if self.processed_data is None:
             raise ValueError("Load data first")
 
+        # Use TFT if available and requested
+        if use_tft and TFT_AVAILABLE:
+            return self.forecast_demand_tft(periods=periods)
+
+        # Fallback to simple forecasting
         print(f"🔮 Forecasting demand for next {periods} {frequency}...")
 
         forecaster = CustomerTrendForecaster(self.processed_data)
@@ -179,7 +253,8 @@ class CustomerTrendApp:
 
         results = {
             'overall_forecast': overall_forecast,
-            'product_forecasts': product_forecasts
+            'product_forecasts': product_forecasts,
+            'method': 'Simple Linear Regression'
         }
 
         print("✅ Demand forecasting complete!\n")

@@ -4,8 +4,9 @@ Use this to get all historical data from a specific start date.
 """
 
 import sys
+import argparse
 from src.integrations.square_connector import SquareDataConnector
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -64,29 +65,62 @@ def sync_custom_range(start_date, end_date):
         print(f"❌ Error: {str(e)}")
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: python sync_custom_range.py START_DATE END_DATE")
-        print()
-        print("Examples:")
-        print("  # Get all data from 2020 onwards")
-        print("  python sync_custom_range.py 2020-01-01 2024-12-31")
-        print()
-        print("  # Get specific year")
-        print("  python sync_custom_range.py 2023-01-01 2023-12-31")
-        print()
-        print("  # Get everything from when you started using Square")
-        print("  python sync_custom_range.py 2018-01-01 2024-12-31")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description='Sync Square data for a custom date range',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Get last 30 days of data
+  python sync_custom_range.py --days 30
 
-    start_date = sys.argv[1]
-    end_date = sys.argv[2]
+  # Get last 90 days
+  python sync_custom_range.py --days 90
 
-    # Validate date format
-    try:
-        datetime.strptime(start_date, '%Y-%m-%d')
-        datetime.strptime(end_date, '%Y-%m-%d')
-    except ValueError:
-        print("❌ Invalid date format. Use YYYY-MM-DD")
+  # Get specific date range
+  python sync_custom_range.py 2024-01-01 2024-12-31
+
+  # Get all data from 2020 onwards
+  python sync_custom_range.py 2020-01-01 2024-12-31
+        """
+    )
+
+    parser.add_argument(
+        '--days',
+        type=int,
+        help='Number of days of historical data to sync (e.g., --days 30 for last 30 days)'
+    )
+    parser.add_argument(
+        'start_date',
+        nargs='?',
+        help='Start date in YYYY-MM-DD format'
+    )
+    parser.add_argument(
+        'end_date',
+        nargs='?',
+        help='End date in YYYY-MM-DD format'
+    )
+
+    args = parser.parse_args()
+
+    # Determine date range
+    if args.days:
+        # Use --days flag
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        start_date = (datetime.now() - timedelta(days=args.days)).strftime('%Y-%m-%d')
+    elif args.start_date and args.end_date:
+        # Use explicit date range
+        start_date = args.start_date
+        end_date = args.end_date
+
+        # Validate date format
+        try:
+            datetime.strptime(start_date, '%Y-%m-%d')
+            datetime.strptime(end_date, '%Y-%m-%d')
+        except ValueError:
+            print("❌ Invalid date format. Use YYYY-MM-DD")
+            sys.exit(1)
+    else:
+        parser.print_help()
         sys.exit(1)
 
     sync_custom_range(start_date, end_date)

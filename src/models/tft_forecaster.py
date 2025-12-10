@@ -169,15 +169,21 @@ class TFTForecaster:
             Dictionary with training results and model
         """
         try:
+            import sys
             import torch
             from pytorch_forecasting import TemporalFusionTransformer
             from pytorch_forecasting.metrics import QuantileLoss
+            import pytorch_lightning as pl
             from pytorch_lightning import Trainer
             from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
             from torch.utils.data import DataLoader
 
             print("=" * 70)
             print("🚀 TRAINING TEMPORAL FUSION TRANSFORMER")
+            print("=" * 70)
+            print(f"🔍 DEBUG: PyTorch Lightning version: {pl.__version__}")
+            print(f"🔍 DEBUG: Python executable: {sys.executable}")
+            print(f"🔍 DEBUG: PyTorch Lightning path: {pl.__file__}")
             print("=" * 70)
 
             # Prepare data

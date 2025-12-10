@@ -6,8 +6,8 @@ scipy>=1.11.0
 
 # Deep Learning
 tensorflow>=2.16.0
-torch>=2.0.0
-pytorch-lightning>=2.0.0
+torch>=2.0.0,<2.3.0
+pytorch-lightning>=1.9.0,<2.0.0  # IMPORTANT: v2.0+ breaks pytorch-forecasting compatibility
 pytorch-forecasting>=1.0.0
 
 # Advanced Time Series and Forecasting

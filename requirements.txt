@@ -4,12 +4,6 @@ pandas>=2.0.0
 scikit-learn>=1.3.0
 scipy>=1.11.0
 
-# Deep Learning
-tensorflow>=2.16.0
-torch>=2.0.0,<2.3.0
-lightning>=2.0.0  # Using unified 'lightning' package (replaces pytorch-lightning)
-pytorch-forecasting>=1.0.0
-
 # Advanced Time Series and Forecasting
 statsmodels>=0.14.0
 xgboost>=2.0.0

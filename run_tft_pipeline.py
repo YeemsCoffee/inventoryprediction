@@ -43,12 +43,14 @@ def run_tft_pipeline(
         print("📊 Step 1: Loading data from Gold layer...")
         query = """
         SELECT
-            date,
-            product_name as product,
-            quantity as amount
-        FROM gold.fact_sales
-        WHERE date >= CURRENT_DATE - INTERVAL '1 year'
-        ORDER BY date
+            d.date,
+            p.product_name as product,
+            f.quantity as amount
+        FROM gold.fact_sales f
+        JOIN gold.dim_date d ON f.date_key = d.date_key
+        JOIN gold.dim_product p ON f.product_sk = p.product_sk
+        WHERE d.date >= CURRENT_DATE - INTERVAL '1 year'
+        ORDER BY d.date
         """
 
         with db.engine.connect() as conn:

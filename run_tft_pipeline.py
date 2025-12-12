@@ -49,7 +49,6 @@ def run_tft_pipeline(
         FROM gold.fact_sales f
         JOIN gold.dim_date d ON f.date_key = d.date_key
         JOIN gold.dim_product p ON f.product_sk = p.product_sk
-        WHERE d.date >= CURRENT_DATE - INTERVAL '1 year'
         ORDER BY d.date
         """
 

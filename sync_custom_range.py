@@ -14,11 +14,14 @@ load_dotenv()
 def sync_custom_range(start_date, end_date):
     """
     Sync Square data for a custom date range.
+    Automatically chunks large ranges into monthly segments to avoid timeouts.
 
     Args:
         start_date: Start date (YYYY-MM-DD)
         end_date: End date (YYYY-MM-DD)
     """
+    import pandas as pd
+
     print("=" * 70)
     print("📦 SQUARE HISTORICAL DATA SYNC")
     print("=" * 70)
@@ -38,13 +41,64 @@ def sync_custom_range(start_date, end_date):
         print(f"   Locations: {result['locations']}")
         print()
 
-        # Fetch data
-        print(f"📡 Fetching data from {start_date} to {end_date}...")
-        orders_df = connector.sync_to_csv(
-            start_date=start_date,
-            end_date=end_date,
-            output_path='data/raw/square_sales.csv'
-        )
+        # Calculate date range in days
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        total_days = (end_dt - start_dt).days
+
+        # If range > 60 days, chunk into monthly segments
+        if total_days > 60:
+            print(f"📅 Large date range ({total_days} days) - chunking into monthly segments...")
+            print()
+
+            all_data = []
+            current_start = start_dt
+            chunk_num = 1
+
+            while current_start < end_dt:
+                # Calculate chunk end (30 days or end_date, whichever is sooner)
+                chunk_end = min(current_start + timedelta(days=30), end_dt)
+
+                chunk_start_str = current_start.strftime('%Y-%m-%d')
+                chunk_end_str = chunk_end.strftime('%Y-%m-%d')
+
+                print(f"📡 Chunk {chunk_num}: {chunk_start_str} to {chunk_end_str}")
+
+                try:
+                    chunk_df = connector.sync_to_csv(
+                        start_date=chunk_start_str,
+                        end_date=chunk_end_str,
+                        output_path=None  # Don't save yet
+                    )
+
+                    if chunk_df is not None and not chunk_df.empty:
+                        all_data.append(chunk_df)
+                        print(f"   ✅ Got {len(chunk_df):,} transactions")
+                    else:
+                        print(f"   ⚠️  No data")
+
+                except Exception as e:
+                    print(f"   ❌ Chunk failed: {str(e)}")
+
+                current_start = chunk_end + timedelta(days=1)
+                chunk_num += 1
+
+            # Combine all chunks
+            if all_data:
+                orders_df = pd.concat(all_data, ignore_index=True)
+                # Save combined data
+                orders_df.to_csv('data/raw/square_sales.csv', index=False)
+            else:
+                orders_df = None
+
+        else:
+            # Small range - fetch directly
+            print(f"📡 Fetching data from {start_date} to {end_date}...")
+            orders_df = connector.sync_to_csv(
+                start_date=start_date,
+                end_date=end_date,
+                output_path='data/raw/square_sales.csv'
+            )
 
         if orders_df is not None and not orders_df.empty:
             print()

@@ -4,6 +4,7 @@ Use this to get all historical data from a specific start date.
 """
 
 import sys
+import os
 import argparse
 from src.integrations.square_connector import SquareDataConnector
 from datetime import datetime, timedelta
@@ -65,10 +66,9 @@ def sync_custom_range(start_date, end_date):
                 print(f"📡 Chunk {chunk_num}: {chunk_start_str} to {chunk_end_str}")
 
                 try:
-                    chunk_df = connector.sync_to_csv(
+                    chunk_df = connector.fetch_orders(
                         start_date=chunk_start_str,
-                        end_date=chunk_end_str,
-                        output_path=None  # Don't save yet
+                        end_date=chunk_end_str
                     )
 
                     if chunk_df is not None and not chunk_df.empty:
@@ -87,6 +87,7 @@ def sync_custom_range(start_date, end_date):
             if all_data:
                 orders_df = pd.concat(all_data, ignore_index=True)
                 # Save combined data
+                os.makedirs('data/raw', exist_ok=True)
                 orders_df.to_csv('data/raw/square_sales.csv', index=False)
             else:
                 orders_df = None

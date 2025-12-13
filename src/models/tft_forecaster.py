@@ -145,6 +145,8 @@ class TFTForecaster:
         - Weather features (if available)
         - Step change indicator for second store opening
 
+        Covariates are extended into the future to support validation and prediction.
+
         Args:
             product_name: Product identifier
             location: Location name
@@ -156,14 +158,26 @@ class TFTForecaster:
         from darts import TimeSeries, concatenate
         from darts.utils.timeseries_generation import datetime_attribute_timeseries
 
-        # Get date range from target series
+        # Get date range from target series and extend into future
         start_date = target_series.start_time()
         end_date = target_series.end_time()
+
+        # Extend covariates 365 days into the future to cover validation and predictions
+        extended_end_date = end_date + pd.Timedelta(days=365)
+
+        # Create extended date range
+        extended_date_range = pd.date_range(start=start_date, end=extended_end_date, freq="D")
+
+        # Create a dummy extended series for generating calendar features
+        extended_series = TimeSeries.from_times_and_values(
+            times=extended_date_range,
+            values=np.zeros(len(extended_date_range))
+        )
 
         # 1. Calendar covariates using datetime_attribute_timeseries
         # Day of week (0=Monday, 6=Sunday) - one-hot encoded
         dow_series = datetime_attribute_timeseries(
-            target_series,
+            extended_series,
             attribute="dayofweek",
             one_hot=True,
             cyclic=False,
@@ -171,7 +185,7 @@ class TFTForecaster:
 
         # Month (1-12) - one-hot encoded
         month_series = datetime_attribute_timeseries(
-            target_series,
+            extended_series,
             attribute="month",
             one_hot=True,
             cyclic=False,
@@ -179,10 +193,9 @@ class TFTForecaster:
 
         # 2. Step change indicator for second store opening
         # Create a binary series: 0 before SECOND_STORE_OPEN_DATE, 1 after
-        date_index = pd.date_range(start=start_date, end=end_date, freq="D")
-        step_change = (date_index >= SECOND_STORE_OPEN_DATE).astype(int)
+        step_change = (extended_date_range >= SECOND_STORE_OPEN_DATE).astype(int)
         step_df = pd.DataFrame(
-            {"date": date_index, "second_store_indicator": step_change}
+            {"date": extended_date_range, "second_store_indicator": step_change}
         )
         step_series = TimeSeries.from_dataframe(
             step_df, time_col="date", value_cols="second_store_indicator", freq="D"
@@ -222,8 +235,14 @@ class TFTForecaster:
                         fillna_value=0,
                     )
 
-                    # Slice to match target date range
-                    weather_series = weather_series.slice(start_date, end_date)
+                    # Extend weather to cover the extended date range
+                    # For dates beyond available weather, use forward fill (last known values)
+                    weather_end = weather_series.end_time()
+                    if extended_end_date > weather_end:
+                        # Create a series with the extended range and forward fill
+                        weather_series = weather_series.pad(
+                            n=int((extended_end_date - weather_end).days)
+                        )
 
         # Combine all covariates
         covariate_list = [dow_series, month_series, step_series]

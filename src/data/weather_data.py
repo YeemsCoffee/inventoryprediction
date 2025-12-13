@@ -282,12 +282,30 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description='Fetch and save weather data')
-    parser.add_argument('--days-back', type=int, default=730, help='Historical days to fetch')
+    parser.add_argument('--days-back', type=int, help='Historical days to fetch (alternative to --start-date)')
+    parser.add_argument('--start-date', type=str, help='Start date in YYYY-MM-DD format (alternative to --days-back)')
     parser.add_argument('--days-forward', type=int, default=14, help='Forecast days to fetch')
 
     args = parser.parse_args()
 
+    # Calculate days_back from start_date if provided
+    if args.start_date:
+        try:
+            start_date = pd.to_datetime(args.start_date).date()
+            today = date.today()
+            days_back = (today - start_date).days
+            logger.info(f"📅 Calculated days_back={days_back} from start_date={args.start_date}")
+        except Exception as e:
+            logger.error(f"Invalid start_date format. Use YYYY-MM-DD. Error: {e}")
+            raise
+    elif args.days_back:
+        days_back = args.days_back
+    else:
+        # Default to 730 days if neither provided
+        days_back = 730
+        logger.info("Using default days_back=730 (2 years)")
+
     fetch_and_save_weather(
-        days_back=args.days_back,
+        days_back=days_back,
         days_forward=args.days_forward
     )

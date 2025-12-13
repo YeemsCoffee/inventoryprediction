@@ -45,10 +45,12 @@ def run_tft_pipeline(
         SELECT
             d.date,
             p.product_name as product,
+            l.location_name as location,
             f.quantity as amount
         FROM gold.fact_sales f
         JOIN gold.dim_date d ON f.date_key = d.date_key
         JOIN gold.dim_product p ON f.product_sk = p.product_sk
+        JOIN gold.dim_location l ON f.location_sk = l.location_sk
         ORDER BY d.date
         """
 
@@ -56,16 +58,21 @@ def run_tft_pipeline(
             data = pd.read_sql(query, conn)
 
         print(f"✅ Loaded {len(data):,} sales records")
+        print(f"📍 Locations: {', '.join(data['location'].unique())}")
         print()
 
-        # Step 2: Select top products
-        print("📦 Step 2: Selecting top products...")
-        product_sales = data.groupby('product')['amount'].sum().sort_values(ascending=False)
-        top_products = product_sales[product_sales >= min_sales].head(max_products)
+        # Step 2: Select top (product, location) pairs
+        print("📦 Step 2: Selecting top (product, location) pairs...")
+        product_location_sales = (
+            data.groupby(['product', 'location'])['amount']
+            .sum()
+            .sort_values(ascending=False)
+        )
+        top_pairs = product_location_sales[product_location_sales >= min_sales].head(max_products)
 
-        print(f"✅ Selected {len(top_products)} products:")
-        for i, (product, total) in enumerate(top_products.items(), 1):
-            print(f"   {i}. {product[:50]:50s} (Total: {total:,.0f})")
+        print(f"✅ Selected {len(top_pairs)} (product, location) pairs:")
+        for i, ((product, location), total) in enumerate(top_pairs.items(), 1):
+            print(f"   {i}. {product[:40]:40s} @ {location:15s} (Total: {total:,.0f})")
         print()
 
         # Step 2.5: Load weather data
@@ -89,16 +96,21 @@ def run_tft_pipeline(
 
         # Step 3: Train models
         print("🤖 Step 3: Training TFT models...")
-        forecaster = TFTForecaster(data, weather_data=weather_data)
+        forecaster = TFTForecaster(
+            data=data,
+            location_col='location',
+            weather_df=weather_data
+        )
 
         all_results = []
         all_predictions = []
 
-        for product in top_products.index:
+        for (product, location) in top_pairs.index:
             try:
                 # Train
                 result = forecaster.train_tft(
                     product_name=product,
+                    location=location,
                     forecast_horizon=forecast_days,
                     input_chunk_length=30,
                     hidden_size=32,
@@ -108,14 +120,18 @@ def run_tft_pipeline(
                 all_results.append(result)
 
                 # Generate predictions
-                predictions = forecaster.predict(product, n_days=forecast_days)
+                predictions = forecaster.predict(
+                    product_name=product,
+                    location=location,
+                    n_days=forecast_days
+                )
                 predictions['model_type'] = 'TFT'
                 predictions['trained_at'] = datetime.now()
 
                 all_predictions.append(predictions)
 
             except Exception as e:
-                print(f"⚠️  Skipping {product}: {str(e)}")
+                print(f"⚠️  Skipping {product} @ {location}: {str(e)}")
                 continue
 
         print()
@@ -133,6 +149,7 @@ def run_tft_pipeline(
                 CREATE TABLE IF NOT EXISTS predictions.demand_forecasts (
                     id SERIAL PRIMARY KEY,
                     product_name VARCHAR(255),
+                    location VARCHAR(100),
                     forecast_date DATE,
                     forecasted_quantity NUMERIC,
                     model_type VARCHAR(50),
@@ -171,7 +188,7 @@ def run_tft_pipeline(
         print(f"Completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print()
         print("📊 Summary:")
-        print(f"   Products trained: {len(all_results)}")
+        print(f"   (Product, Location) pairs trained: {len(all_results)}")
         print(f"   Predictions generated: {len(all_predictions) * forecast_days if all_predictions else 0}")
         print(f"   Forecast horizon: {forecast_days} days")
         print()
@@ -179,7 +196,7 @@ def run_tft_pipeline(
         if all_results:
             print("📈 Model Performance:")
             for result in all_results:
-                print(f"   {result['product'][:50]:50s} | MAE: {result['mae']:8.2f} | RMSE: {result['rmse']:8.2f}")
+                print(f"   {result['product'][:40]:40s} @ {result['location']:15s} | MAE: {result['mae']:8.2f} | RMSE: {result['rmse']:8.2f}")
 
         print()
         print("=" * 80)

@@ -1,6 +1,6 @@
 """
 Temporal Fusion Transformer (TFT) for demand forecasting using Darts.
-Clean, production-friendly implementation with per-product models.
+Production implementation with per-(product, location) models and future covariates.
 """
 
 from typing import Dict, Tuple, Optional
@@ -11,12 +11,17 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+# Placeholder for second store opening (adjust as needed)
+SECOND_STORE_OPEN_DATE = pd.Timestamp("2023-06-01")
+
 
 class TFTForecaster:
     """
     Temporal Fusion Transformer using Darts library.
-    Handles per-product demand forecasting with train/val split and metrics.
-    Supports weather data as future covariates.
+    Handles per-(product, location) demand forecasting with future covariates:
+    - Calendar features (day of week, month)
+    - Weather features (temperature, precipitation)
+    - Step change indicator for second store opening
     """
 
     def __init__(
@@ -25,60 +30,82 @@ class TFTForecaster:
         date_col: str = "date",
         product_col: str = "product",
         target_col: str = "amount",
-        weather_data: Optional[pd.DataFrame] = None,
-        location_col: Optional[str] = None,
+        location_col: str = "location",
+        weather_df: Optional[pd.DataFrame] = None,
+        weather_date_col: str = "date",
+        weather_location_col: str = "location",
     ):
         """
         Initialize TFT forecaster.
 
         Args:
-            data: DataFrame with at least [date_col, product_col, target_col]
+            data: DataFrame with columns [date_col, product_col, location_col, target_col]
             date_col: Name of the date column
             product_col: Name of the product identifier column
             target_col: Name of the demand/quantity column
-            weather_data: Optional weather DataFrame with columns [date, location, temp_max, temp_min, precipitation]
-            location_col: Optional column name in data that maps to weather location
+            location_col: Name of the location column
+            weather_df: Optional weather DataFrame with [date, location, temp_max, temp_min, precipitation, ...]
+            weather_date_col: Date column in weather_df
+            weather_location_col: Location column in weather_df
         """
         self.data = data.copy()
         self.date_col = date_col
         self.product_col = product_col
         self.target_col = target_col
-        self.weather_data = weather_data.copy() if weather_data is not None else None
         self.location_col = location_col
+        self.weather_df = weather_df.copy() if weather_df is not None else None
+        self.weather_date_col = weather_date_col
+        self.weather_location_col = weather_location_col
 
         # Ensure dates are datetime
         self.data[self.date_col] = pd.to_datetime(self.data[self.date_col])
-        if self.weather_data is not None:
-            self.weather_data['date'] = pd.to_datetime(self.weather_data['date'])
+        if self.weather_df is not None:
+            self.weather_df[self.weather_date_col] = pd.to_datetime(
+                self.weather_df[self.weather_date_col]
+            )
 
-        # Store models, scalers, and series per product
+        # Store models, scalers, and series per (product, location)
+        # Keys are "product|location" strings
         self.models: Dict[str, "TFTModel"] = {}
-        self.scalers: Dict[str, "Scaler"] = {}
+        self.target_scalers: Dict[str, "Scaler"] = {}
+        self.covariate_scalers: Dict[str, "Scaler"] = {}
         self.series_unscaled: Dict[str, "TimeSeries"] = {}
         self.series_scaled: Dict[str, "TimeSeries"] = {}
-        self.future_covariates: Dict[str, "TimeSeries"] = {}
+        self.covariates: Dict[str, "TimeSeries"] = {}
 
-    def _prepare_daily_series(self, product_name: str) -> "TimeSeries":
+    def _make_key(self, product_name: str, location: str) -> str:
+        """Create a unique key for (product, location) pair."""
+        return f"{product_name}|{location}"
+
+    def _prepare_daily_series(
+        self, product_name: str, location: str
+    ) -> "TimeSeries":
         """
-        Build a continuous daily TimeSeries for a single product.
+        Build a continuous daily TimeSeries for a single (product, location).
 
         Args:
             product_name: Product identifier
+            location: Location name
 
         Returns:
             Darts TimeSeries with daily aggregated demand
         """
         from darts import TimeSeries
 
-        # Filter for this product
-        df_prod = self.data[self.data[self.product_col] == product_name].copy()
+        # Filter for this product and location
+        df_prod = self.data[
+            (self.data[self.product_col] == product_name)
+            & (self.data[self.location_col] == location)
+        ].copy()
+
         if df_prod.empty:
-            raise ValueError(f"No data found for product: {product_name}")
+            raise ValueError(
+                f"No data found for product='{product_name}', location='{location}'"
+            )
 
         # Aggregate by date (sum daily quantities)
         df_prod = (
-            df_prod
-            .groupby(self.date_col)[self.target_col]
+            df_prod.groupby(self.date_col)[self.target_col]
             .sum()
             .reset_index()
             .sort_values(self.date_col)
@@ -107,90 +134,153 @@ class TFTForecaster:
         )
         return series
 
-    def _prepare_weather_covariates(self, product_name: str, location: str = None) -> Optional["TimeSeries"]:
+    def _prepare_covariates(
+        self, product_name: str, location: str, target_series: "TimeSeries"
+    ) -> "TimeSeries":
         """
-        Build weather future covariates TimeSeries for a product's location.
+        Build future covariates TimeSeries for a (product, location).
+
+        Includes:
+        - Calendar features (day_of_week, month as one-hot)
+        - Weather features (if available)
+        - Step change indicator for second store opening
 
         Args:
             product_name: Product identifier
-            location: Location name to filter weather data (if None, uses first location or all)
+            location: Location name
+            target_series: The target TimeSeries (for date range alignment)
 
         Returns:
-            Darts TimeSeries with weather features, or None if no weather data available
+            Darts TimeSeries with future covariates
         """
-        if self.weather_data is None:
-            return None
+        from darts import TimeSeries, concatenate
+        from darts.utils.timeseries_generation import datetime_attribute_timeseries
 
-        from darts import TimeSeries
+        # Get date range from target series
+        start_date = target_series.start_time()
+        end_date = target_series.end_time()
 
-        # If location specified, filter for that location
-        if location:
-            weather_df = self.weather_data[self.weather_data['location'] == location].copy()
-        else:
-            # Use first available location or aggregate
-            locations = self.weather_data['location'].unique()
-            if len(locations) > 0:
-                weather_df = self.weather_data[self.weather_data['location'] == locations[0]].copy()
-            else:
-                weather_df = self.weather_data.copy()
-
-        if weather_df.empty:
-            return None
-
-        # Sort by date and prepare features
-        weather_df = weather_df.sort_values('date').reset_index(drop=True)
-
-        # Create TimeSeries with weather features
-        weather_series = TimeSeries.from_dataframe(
-            weather_df,
-            time_col='date',
-            value_cols=['temp_max', 'temp_min', 'precipitation'],
-            freq='D',
-            fill_missing_dates=True,
-            fillna_value=0,
+        # 1. Calendar covariates using datetime_attribute_timeseries
+        # Day of week (0=Monday, 6=Sunday) - one-hot encoded
+        dow_series = datetime_attribute_timeseries(
+            target_series,
+            attribute="dayofweek",
+            one_hot=True,
+            cyclic=False,
         )
 
-        return weather_series
+        # Month (1-12) - one-hot encoded
+        month_series = datetime_attribute_timeseries(
+            target_series,
+            attribute="month",
+            one_hot=True,
+            cyclic=False,
+        )
+
+        # 2. Step change indicator for second store opening
+        # Create a binary series: 0 before SECOND_STORE_OPEN_DATE, 1 after
+        date_index = pd.date_range(start=start_date, end=end_date, freq="D")
+        step_change = (date_index >= SECOND_STORE_OPEN_DATE).astype(int)
+        step_df = pd.DataFrame(
+            {"date": date_index, "second_store_indicator": step_change}
+        )
+        step_series = TimeSeries.from_dataframe(
+            step_df, time_col="date", value_cols="second_store_indicator", freq="D"
+        )
+
+        # 3. Weather covariates (if available)
+        weather_series = None
+        if self.weather_df is not None:
+            # Filter weather for this location
+            weather_loc = self.weather_df[
+                self.weather_df[self.weather_location_col] == location
+            ].copy()
+
+            if not weather_loc.empty:
+                # Identify numeric weather columns (exclude date and location)
+                exclude_cols = {self.weather_date_col, self.weather_location_col}
+                weather_cols = [
+                    col
+                    for col in weather_loc.columns
+                    if col not in exclude_cols
+                    and pd.api.types.is_numeric_dtype(weather_loc[col])
+                ]
+
+                if weather_cols:
+                    # Sort by date
+                    weather_loc = weather_loc.sort_values(
+                        self.weather_date_col
+                    ).reset_index(drop=True)
+
+                    # Create weather TimeSeries
+                    weather_series = TimeSeries.from_dataframe(
+                        weather_loc,
+                        time_col=self.weather_date_col,
+                        value_cols=weather_cols,
+                        freq="D",
+                        fill_missing_dates=True,
+                        fillna_value=0,
+                    )
+
+                    # Slice to match target date range
+                    weather_series = weather_series.slice(start_date, end_date)
+
+        # Combine all covariates
+        covariate_list = [dow_series, month_series, step_series]
+        if weather_series is not None:
+            covariate_list.append(weather_series)
+
+        # Stack covariates into a single multivariate TimeSeries
+        combined_covariates = concatenate(covariate_list, axis=1)
+
+        return combined_covariates
 
     def prepare_data_for_product(
         self,
         product_name: str,
+        location: str,
         val_ratio: float = 0.2,
-    ) -> Tuple["TimeSeries", "TimeSeries"]:
+    ) -> Tuple["TimeSeries", "TimeSeries", "TimeSeries", "TimeSeries"]:
         """
-        Prepare scaled train/val series for a single product.
+        Prepare scaled train/val series and covariates for a (product, location).
 
         Args:
             product_name: Product to forecast
+            location: Location name
             val_ratio: Fraction of data to use for validation (e.g. 0.2 = 20%)
 
         Returns:
-            (train_scaled, val_scaled)
+            (train_scaled, val_scaled, train_covs, val_covs)
         """
         from darts.dataprocessing.transformers import Scaler
 
-        # Build unscaled TimeSeries
-        series = self._prepare_daily_series(product_name)
+        key = self._make_key(product_name, location)
 
-        # Scale using Darts Scaler (fit once on full history)
-        scaler = Scaler()
-        series_scaled = scaler.fit_transform(series)
+        # Build unscaled target TimeSeries
+        series = self._prepare_daily_series(product_name, location)
+
+        # Scale target using Darts Scaler (fit once on full history)
+        target_scaler = Scaler()
+        series_scaled = target_scaler.fit_transform(series)
+
+        # Build covariates
+        covariates = self._prepare_covariates(product_name, location, series)
+
+        # Optionally scale covariates (usually not needed if bounded)
+        # For simplicity, we'll leave covariates unscaled here
+        # If you want to scale them, create a separate Scaler for covariates
 
         # Store for later use
-        self.scalers[product_name] = scaler
-        self.series_unscaled[product_name] = series
-        self.series_scaled[product_name] = series_scaled
-
-        # Prepare weather covariates if available
-        weather_cov = self._prepare_weather_covariates(product_name)
-        if weather_cov is not None:
-            self.future_covariates[product_name] = weather_cov
+        self.target_scalers[key] = target_scaler
+        self.series_unscaled[key] = series
+        self.series_scaled[key] = series_scaled
+        self.covariates[key] = covariates
 
         # Train/val split
         n_total = len(series_scaled)
         if n_total < 10:
             raise ValueError(
-                f"Not enough data points ({n_total}) for product {product_name}"
+                f"Not enough data points ({n_total}) for product='{product_name}', location='{location}'"
             )
 
         n_val = max(1, int(n_total * val_ratio))
@@ -199,11 +289,16 @@ class TFTForecaster:
         train = series_scaled[:n_train]
         val = series_scaled[n_train:]
 
-        return train, val
+        # Split covariates with the same indices
+        train_covs = covariates[:n_train]
+        val_covs = covariates[n_train:]
+
+        return train, val, train_covs, val_covs
 
     def train_tft(
         self,
         product_name: str,
+        location: str,
         forecast_horizon: int = 7,
         input_chunk_length: int = 30,
         hidden_size: int = 32,
@@ -212,10 +307,11 @@ class TFTForecaster:
         n_epochs: int = 50,
     ) -> Dict:
         """
-        Train TFT model for a single product.
+        Train TFT model for a single (product, location).
 
         Args:
             product_name: Product to train model for
+            location: Location name
             forecast_horizon: Days to forecast
             input_chunk_length: Historical window size
             hidden_size: Hidden layer size
@@ -224,30 +320,31 @@ class TFTForecaster:
             n_epochs: Training epochs
 
         Returns:
-            Dict with training results (MAE, RMSE, etc.)
+            Dict with training results (product, location, MAE, RMSE, etc.)
         """
         from darts.models import TFTModel
         from darts.metrics import mae, rmse
         from pytorch_lightning.callbacks import EarlyStopping
 
+        key = self._make_key(product_name, location)
+
         print("=" * 70)
-        print(f"🚀 TRAINING TFT FOR PRODUCT: {product_name}")
+        print(f"🚀 TRAINING TFT FOR: {product_name} @ {location}")
         print("=" * 70)
 
-        # Prepare scaled train/val series
-        train, val = self.prepare_data_for_product(product_name)
-        series_scaled_full = self.series_scaled[product_name]
-        series_unscaled_full = self.series_unscaled[product_name]
-        scaler = self.scalers[product_name]
+        # Prepare scaled train/val series and covariates
+        train, val, train_covs, val_covs = self.prepare_data_for_product(
+            product_name, location
+        )
+        series_scaled_full = self.series_scaled[key]
+        series_unscaled_full = self.series_unscaled[key]
+        target_scaler = self.target_scalers[key]
+        covariates_full = self.covariates[key]
 
         print(f"📊 Total points:   {len(series_scaled_full)}")
         print(f"📊 Train points:   {len(train)}")
         print(f"📊 Validation pts: {len(val)}")
-
-        # Get weather covariates if available
-        future_cov = self.future_covariates.get(product_name)
-        if future_cov is not None:
-            print(f"🌤️  Using weather covariates: {future_cov.n_components} features")
+        print(f"🌤️  Covariate features: {covariates_full.n_components}")
 
         # Initialize TFT model
         model = TFTModel(
@@ -260,7 +357,7 @@ class TFTForecaster:
             batch_size=16,
             n_epochs=n_epochs,
             optimizer_kwargs={"lr": 1e-3},
-            add_relative_index=True,  # simple time index covariate
+            add_relative_index=True,
             random_state=42,
             pl_trainer_kwargs={
                 "accelerator": "auto",
@@ -277,43 +374,30 @@ class TFTForecaster:
             force_reset=True,
         )
 
-        # Train
+        # Train with covariates
         print("\n🎯 Starting training...")
-        if future_cov is not None:
-            model.fit(
-                series=train,
-                future_covariates=future_cov,
-                val_series=val,
-                val_future_covariates=future_cov,
-                verbose=True,
-            )
-        else:
-            model.fit(
-                series=train,
-                val_series=val,
-                verbose=True,
-            )
+        model.fit(
+            series=train,
+            future_covariates=train_covs,
+            val_series=val,
+            val_future_covariates=val_covs,
+            verbose=True,
+        )
 
         # Store model
-        self.models[product_name] = model
+        self.models[key] = model
 
         # ---------- Validation forecast ----------
         # Forecast the next len(val) points from the end of the full series
         n_val = len(val)
-        if future_cov is not None:
-            pred_scaled = model.predict(
-                n=n_val,
-                series=series_scaled_full,
-                future_covariates=future_cov,
-            )
-        else:
-            pred_scaled = model.predict(
-                n=n_val,
-                series=series_scaled_full,
-            )
+        pred_scaled = model.predict(
+            n=n_val,
+            series=series_scaled_full,
+            future_covariates=covariates_full,
+        )
 
         # Inverse-transform predictions and true validation slice
-        pred_unscaled = scaler.inverse_transform(pred_scaled)
+        pred_unscaled = target_scaler.inverse_transform(pred_scaled)
 
         n_total = len(series_scaled_full)
         val_unscaled = series_unscaled_full[n_total - n_val :]
@@ -322,13 +406,14 @@ class TFTForecaster:
         mae_val = mae(val_unscaled, pred_unscaled)
         rmse_val = rmse(val_unscaled, pred_unscaled)
 
-        print(f"\n✅ Training complete for {product_name}!")
+        print(f"\n✅ Training complete for {product_name} @ {location}!")
         print(f"📊 Validation MAE:  {mae_val:.3f}")
         print(f"📊 Validation RMSE: {rmse_val:.3f}")
         print("=" * 70)
 
         return {
             "product": product_name,
+            "location": location,
             "mae": mae_val,
             "rmse": rmse_val,
             "model": model,
@@ -339,58 +424,64 @@ class TFTForecaster:
     def predict(
         self,
         product_name: str,
+        location: str,
         n_days: int = 7,
     ) -> pd.DataFrame:
         """
-        Generate forward predictions for a product.
+        Generate forward predictions for a (product, location).
 
         Args:
             product_name: Product to predict
+            location: Location name
             n_days: Number of days to forecast
 
         Returns:
-            DataFrame with columns: [forecast_date, forecasted_quantity, product_name]
+            DataFrame with columns: [forecast_date, forecasted_quantity, product_name, location]
         """
-        if product_name not in self.models:
-            raise ValueError(f"No trained model found for product: {product_name}")
+        key = self._make_key(product_name, location)
 
-        from darts.metrics import mae
+        if key not in self.models:
+            raise ValueError(
+                f"No trained model found for product='{product_name}', location='{location}'"
+            )
 
-        model = self.models[product_name]
-        scaler = self.scalers[product_name]
-        series_scaled_full = self.series_scaled[product_name]
-        series_unscaled_full = self.series_unscaled[product_name]
-        future_cov = self.future_covariates.get(product_name)
+        model = self.models[key]
+        target_scaler = self.target_scalers[key]
+        series_scaled_full = self.series_scaled[key]
+        series_unscaled_full = self.series_unscaled[key]
+        covariates_full = self.covariates[key]
+
+        # Check if covariates extend far enough into the future
+        # (Assuming covariates are already prepared to cover the forecast horizon)
+        # If weather data is not available for future dates, this may fail
+        # In that case, you'd need to extend the covariate series with forecast weather
 
         # Forecast future n_days from the end of the series
-        if future_cov is not None:
-            pred_scaled = model.predict(
-                n=n_days,
-                series=series_scaled_full,
-                future_covariates=future_cov,
-            )
-        else:
-            pred_scaled = model.predict(
-                n=n_days,
-                series=series_scaled_full,
-            )
+        pred_scaled = model.predict(
+            n=n_days,
+            series=series_scaled_full,
+            future_covariates=covariates_full,
+        )
 
         # Inverse transform to original scale
-        pred_unscaled = scaler.inverse_transform(pred_scaled)
+        pred_unscaled = target_scaler.inverse_transform(pred_scaled)
 
         # Convert to pandas (use pd_series for univariate TimeSeries)
         forecast_series = pred_unscaled.pd_series()
-        df_forecast = pd.DataFrame({
-            "forecast_date": forecast_series.index,
-            "forecasted_quantity": forecast_series.values,
-            "product_name": product_name
-        })
+        df_forecast = pd.DataFrame(
+            {
+                "forecast_date": forecast_series.index,
+                "forecasted_quantity": forecast_series.values,
+                "product_name": product_name,
+                "location": location,
+            }
+        )
 
-        # (Optional) quick sanity: last observed value vs first forecast
+        # Sanity check: last observed value vs first forecast
         last_actual = series_unscaled_full[-1:].values()[0][0]
         first_pred = pred_unscaled[0].values()[0][0]
         print(
-            f"🔎 {product_name} — last actual: {last_actual:.2f}, "
+            f"🔎 {product_name} @ {location} — last actual: {last_actual:.2f}, "
             f"first forecast: {first_pred:.2f}"
         )
 

@@ -289,10 +289,13 @@ class TFTForecaster:
         # Inverse transform to original scale
         pred_unscaled = scaler.inverse_transform(pred_scaled)
 
-        # Convert to pandas
-        df_forecast = pred_unscaled.pd_dataframe().reset_index()
-        df_forecast.columns = ["forecast_date", "forecasted_quantity"]
-        df_forecast["product_name"] = product_name
+        # Convert to pandas (use pd_series for univariate TimeSeries)
+        forecast_series = pred_unscaled.pd_series()
+        df_forecast = pd.DataFrame({
+            "forecast_date": forecast_series.index,
+            "forecasted_quantity": forecast_series.values,
+            "product_name": product_name
+        })
 
         # (Optional) quick sanity: last observed value vs first forecast
         last_actual = series_unscaled_full[-1:].values()[0][0]

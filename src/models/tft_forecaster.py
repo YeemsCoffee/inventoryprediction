@@ -407,17 +407,18 @@ class TFTForecaster:
         self.models[key] = model
 
         # ---------- Validation forecast ----------
-        # Forecast the next len(val) points from the end of the full series
+        # Forecast the validation period from the end of training data
         n_val = len(val)
         pred_scaled = model.predict(
             n=n_val,
-            series=series_scaled_full,
+            series=train,  # Predict from end of training, not full series
             future_covariates=covariates_full,
         )
 
         # Inverse-transform predictions and true validation slice
         pred_unscaled = target_scaler.inverse_transform(pred_scaled)
 
+        # Get the actual validation data (unscaled)
         n_total = len(series_scaled_full)
         val_unscaled = series_unscaled_full[n_total - n_val :]
 

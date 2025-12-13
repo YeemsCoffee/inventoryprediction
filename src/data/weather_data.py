@@ -108,11 +108,7 @@ def fetch_weather_for_location(name: str, zip_code: str, start: date, end: date)
         "longitude": lon,
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
-        "daily": [
-            "temperature_2m_max",
-            "temperature_2m_min",
-            "precipitation_sum",
-        ],
+        "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
         "timezone": "America/Los_Angeles",
     }
 

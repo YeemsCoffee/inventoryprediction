@@ -485,12 +485,11 @@ class TFTForecaster:
         # Inverse transform to original scale
         pred_unscaled = target_scaler.inverse_transform(pred_scaled)
 
-        # Convert to pandas (use pd_series for univariate TimeSeries)
-        forecast_series = pred_unscaled.pd_series()
+        # Convert to pandas using universal approach (works across all darts versions)
         df_forecast = pd.DataFrame(
             {
-                "forecast_date": forecast_series.index,
-                "forecasted_quantity": forecast_series.values,
+                "forecast_date": pred_unscaled.time_index,
+                "forecasted_quantity": pred_unscaled.values().flatten(),
                 "product_name": product_name,
                 "location": location,
             }

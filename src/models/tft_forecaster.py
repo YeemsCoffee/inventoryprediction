@@ -73,7 +73,7 @@ class TFTForecaster:
 
         # Scale the data
         scaler = StandardScaler()
-        scaled_series = series.map(lambda x: scaler.fit_transform(x.reshape(-1, 1)).flatten())
+        scaled_series = series.map(lambda x: scaler.fit_transform(x.reshape(-1, 1)))
         self.scalers[product_name] = scaler
 
         # Split train/val (80/20)
@@ -168,10 +168,10 @@ class TFTForecaster:
             # Unscale predictions
             scaler = self.scalers[product_name]
             pred_unscaled = prediction.map(
-                lambda x: scaler.inverse_transform(x.reshape(-1, 1)).flatten()
+                lambda x: scaler.inverse_transform(x.reshape(-1, 1))
             )
             val_unscaled = val.map(
-                lambda x: scaler.inverse_transform(x.reshape(-1, 1)).flatten()
+                lambda x: scaler.inverse_transform(x.reshape(-1, 1))
             )
 
             # Calculate metrics
@@ -222,7 +222,7 @@ class TFTForecaster:
         # Scale
         scaler = self.scalers[product_name]
         scaled_series = original_series.map(
-            lambda x: scaler.transform(x.reshape(-1, 1)).flatten()
+            lambda x: scaler.transform(x.reshape(-1, 1))
         )
 
         # Predict
@@ -230,7 +230,7 @@ class TFTForecaster:
 
         # Unscale
         pred_unscaled = prediction.map(
-            lambda x: scaler.inverse_transform(x.reshape(-1, 1)).flatten()
+            lambda x: scaler.inverse_transform(x.reshape(-1, 1))
         )
 
         # Convert to DataFrame

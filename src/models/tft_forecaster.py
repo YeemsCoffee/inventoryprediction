@@ -3,7 +3,7 @@ Temporal Fusion Transformer (TFT) for demand forecasting using Darts.
 Clean, production-friendly implementation with per-product models.
 """
 
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -16,6 +16,7 @@ class TFTForecaster:
     """
     Temporal Fusion Transformer using Darts library.
     Handles per-product demand forecasting with train/val split and metrics.
+    Supports weather data as future covariates.
     """
 
     def __init__(
@@ -24,6 +25,8 @@ class TFTForecaster:
         date_col: str = "date",
         product_col: str = "product",
         target_col: str = "amount",
+        weather_data: Optional[pd.DataFrame] = None,
+        location_col: Optional[str] = None,
     ):
         """
         Initialize TFT forecaster.
@@ -33,20 +36,27 @@ class TFTForecaster:
             date_col: Name of the date column
             product_col: Name of the product identifier column
             target_col: Name of the demand/quantity column
+            weather_data: Optional weather DataFrame with columns [date, location, temp_max, temp_min, precipitation]
+            location_col: Optional column name in data that maps to weather location
         """
         self.data = data.copy()
         self.date_col = date_col
         self.product_col = product_col
         self.target_col = target_col
+        self.weather_data = weather_data.copy() if weather_data is not None else None
+        self.location_col = location_col
 
         # Ensure dates are datetime
         self.data[self.date_col] = pd.to_datetime(self.data[self.date_col])
+        if self.weather_data is not None:
+            self.weather_data['date'] = pd.to_datetime(self.weather_data['date'])
 
         # Store models, scalers, and series per product
         self.models: Dict[str, "TFTModel"] = {}
         self.scalers: Dict[str, "Scaler"] = {}
         self.series_unscaled: Dict[str, "TimeSeries"] = {}
         self.series_scaled: Dict[str, "TimeSeries"] = {}
+        self.future_covariates: Dict[str, "TimeSeries"] = {}
 
     def _prepare_daily_series(self, product_name: str) -> "TimeSeries":
         """
@@ -97,6 +107,51 @@ class TFTForecaster:
         )
         return series
 
+    def _prepare_weather_covariates(self, product_name: str, location: str = None) -> Optional["TimeSeries"]:
+        """
+        Build weather future covariates TimeSeries for a product's location.
+
+        Args:
+            product_name: Product identifier
+            location: Location name to filter weather data (if None, uses first location or all)
+
+        Returns:
+            Darts TimeSeries with weather features, or None if no weather data available
+        """
+        if self.weather_data is None:
+            return None
+
+        from darts import TimeSeries
+
+        # If location specified, filter for that location
+        if location:
+            weather_df = self.weather_data[self.weather_data['location'] == location].copy()
+        else:
+            # Use first available location or aggregate
+            locations = self.weather_data['location'].unique()
+            if len(locations) > 0:
+                weather_df = self.weather_data[self.weather_data['location'] == locations[0]].copy()
+            else:
+                weather_df = self.weather_data.copy()
+
+        if weather_df.empty:
+            return None
+
+        # Sort by date and prepare features
+        weather_df = weather_df.sort_values('date').reset_index(drop=True)
+
+        # Create TimeSeries with weather features
+        weather_series = TimeSeries.from_dataframe(
+            weather_df,
+            time_col='date',
+            value_cols=['temp_max', 'temp_min', 'precipitation'],
+            freq='D',
+            fill_missing_dates=True,
+            fillna_value=0,
+        )
+
+        return weather_series
+
     def prepare_data_for_product(
         self,
         product_name: str,
@@ -125,6 +180,11 @@ class TFTForecaster:
         self.scalers[product_name] = scaler
         self.series_unscaled[product_name] = series
         self.series_scaled[product_name] = series_scaled
+
+        # Prepare weather covariates if available
+        weather_cov = self._prepare_weather_covariates(product_name)
+        if weather_cov is not None:
+            self.future_covariates[product_name] = weather_cov
 
         # Train/val split
         n_total = len(series_scaled)
@@ -184,6 +244,11 @@ class TFTForecaster:
         print(f"📊 Train points:   {len(train)}")
         print(f"📊 Validation pts: {len(val)}")
 
+        # Get weather covariates if available
+        future_cov = self.future_covariates.get(product_name)
+        if future_cov is not None:
+            print(f"🌤️  Using weather covariates: {future_cov.n_components} features")
+
         # Initialize TFT model
         model = TFTModel(
             input_chunk_length=input_chunk_length,
@@ -214,11 +279,20 @@ class TFTForecaster:
 
         # Train
         print("\n🎯 Starting training...")
-        model.fit(
-            series=train,
-            val_series=val,
-            verbose=True,
-        )
+        if future_cov is not None:
+            model.fit(
+                series=train,
+                future_covariates=future_cov,
+                val_series=val,
+                val_future_covariates=future_cov,
+                verbose=True,
+            )
+        else:
+            model.fit(
+                series=train,
+                val_series=val,
+                verbose=True,
+            )
 
         # Store model
         self.models[product_name] = model
@@ -226,10 +300,17 @@ class TFTForecaster:
         # ---------- Validation forecast ----------
         # Forecast the next len(val) points from the end of the full series
         n_val = len(val)
-        pred_scaled = model.predict(
-            n=n_val,
-            series=series_scaled_full,
-        )
+        if future_cov is not None:
+            pred_scaled = model.predict(
+                n=n_val,
+                series=series_scaled_full,
+                future_covariates=future_cov,
+            )
+        else:
+            pred_scaled = model.predict(
+                n=n_val,
+                series=series_scaled_full,
+            )
 
         # Inverse-transform predictions and true validation slice
         pred_unscaled = scaler.inverse_transform(pred_scaled)
@@ -279,12 +360,20 @@ class TFTForecaster:
         scaler = self.scalers[product_name]
         series_scaled_full = self.series_scaled[product_name]
         series_unscaled_full = self.series_unscaled[product_name]
+        future_cov = self.future_covariates.get(product_name)
 
         # Forecast future n_days from the end of the series
-        pred_scaled = model.predict(
-            n=n_days,
-            series=series_scaled_full,
-        )
+        if future_cov is not None:
+            pred_scaled = model.predict(
+                n=n_days,
+                series=series_scaled_full,
+                future_covariates=future_cov,
+            )
+        else:
+            pred_scaled = model.predict(
+                n=n_days,
+                series=series_scaled_full,
+            )
 
         # Inverse transform to original scale
         pred_unscaled = scaler.inverse_transform(pred_scaled)

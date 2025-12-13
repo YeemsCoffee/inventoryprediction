@@ -68,9 +68,28 @@ def run_tft_pipeline(
             print(f"   {i}. {product[:50]:50s} (Total: {total:,.0f})")
         print()
 
+        # Step 2.5: Load weather data
+        print("🌤️  Step 2.5: Loading weather data...")
+        weather_query = """
+        SELECT date, location, temp_max, temp_min, precipitation
+        FROM gold.weather_daily
+        ORDER BY location, date
+        """
+        try:
+            with db.engine.connect() as conn:
+                weather_data = pd.read_sql(weather_query, conn)
+            print(f"✅ Loaded {len(weather_data):,} weather records")
+            if len(weather_data) == 0:
+                print("⚠️  No weather data found. Run: python src/data/weather_data.py")
+                weather_data = None
+        except Exception as e:
+            print(f"⚠️  Could not load weather data: {e}")
+            weather_data = None
+        print()
+
         # Step 3: Train models
         print("🤖 Step 3: Training TFT models...")
-        forecaster = TFTForecaster(data)
+        forecaster = TFTForecaster(data, weather_data=weather_data)
 
         all_results = []
         all_predictions = []

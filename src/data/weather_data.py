@@ -26,6 +26,7 @@ from src.utils.database import RDSConnector
 
 
 BASE_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+BASE_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 BASE_GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 
 # Store location ZIP codes
@@ -89,6 +90,8 @@ def fetch_weather_for_location(name: str, zip_code: str, start: date, end: date)
     """
     Fetch historical + forecast weather for a ZIP-code-based location.
 
+    Uses the Historical Weather API for past data and Forecast API for future data.
+
     Args:
         name: Location name (e.g., "Ktown")
         zip_code: US ZIP code
@@ -102,33 +105,85 @@ def fetch_weather_for_location(name: str, zip_code: str, start: date, end: date)
         RuntimeError: If weather API call fails
     """
     lat, lon = zip_to_latlon(zip_code)
+    today = date.today()
 
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "start_date": start.isoformat(),
-        "end_date": end.isoformat(),
-        "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
-        "timezone": "America/Los_Angeles",
-    }
+    frames = []
 
-    try:
-        resp = requests.get(BASE_FORECAST_URL, params=params, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-    except requests.exceptions.RequestException as e:
-        raise RuntimeError(
-            f"Failed to fetch weather data for {name} (ZIP: {zip_code}): {e}"
-        ) from e
+    # Fetch historical data if start date is in the past
+    if start < today:
+        historical_end = min(end, today - timedelta(days=1))
+        logger.debug(f"Fetching historical data: {start} to {historical_end}")
 
-    daily = data.get("daily", {})
-    df = pd.DataFrame({
-        "date": daily.get("time", []),
-        "temp_max": daily.get("temperature_2m_max", []),
-        "temp_min": daily.get("temperature_2m_min", []),
-        "precipitation": daily.get("precipitation_sum", []),
-    })
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "start_date": start.isoformat(),
+            "end_date": historical_end.isoformat(),
+            "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
+            "timezone": "America/Los_Angeles",
+        }
 
+        try:
+            resp = requests.get(BASE_ARCHIVE_URL, params=params, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+
+            daily = data.get("daily", {})
+            df_hist = pd.DataFrame({
+                "date": daily.get("time", []),
+                "temp_max": daily.get("temperature_2m_max", []),
+                "temp_min": daily.get("temperature_2m_min", []),
+                "precipitation": daily.get("precipitation_sum", []),
+            })
+
+            if not df_hist.empty:
+                frames.append(df_hist)
+
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(
+                f"Failed to fetch historical weather data for {name} (ZIP: {zip_code}): {e}"
+            ) from e
+
+    # Fetch forecast data if end date is today or in the future
+    if end >= today:
+        forecast_start = max(start, today)
+        logger.debug(f"Fetching forecast data: {forecast_start} to {end}")
+
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "start_date": forecast_start.isoformat(),
+            "end_date": end.isoformat(),
+            "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
+            "timezone": "America/Los_Angeles",
+        }
+
+        try:
+            resp = requests.get(BASE_FORECAST_URL, params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+
+            daily = data.get("daily", {})
+            df_forecast = pd.DataFrame({
+                "date": daily.get("time", []),
+                "temp_max": daily.get("temperature_2m_max", []),
+                "temp_min": daily.get("temperature_2m_min", []),
+                "precipitation": daily.get("precipitation_sum", []),
+            })
+
+            if not df_forecast.empty:
+                frames.append(df_forecast)
+
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(
+                f"Failed to fetch forecast weather data for {name} (ZIP: {zip_code}): {e}"
+            ) from e
+
+    # Combine historical and forecast data
+    if not frames:
+        raise RuntimeError(f"No weather data returned for {name} (ZIP: {zip_code})")
+
+    df = pd.concat(frames, ignore_index=True)
     df["date"] = pd.to_datetime(df["date"])
     df["location"] = name
     df["zip"] = zip_code

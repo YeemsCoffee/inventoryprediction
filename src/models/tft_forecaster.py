@@ -135,6 +135,7 @@ class TFTForecaster:
                 dropout=dropout,
                 batch_size=16,
                 n_epochs=n_epochs,
+                add_relative_index=True,  # Automatically add time index as covariate
                 optimizer_kwargs={"lr": 1e-3},
                 pl_trainer_kwargs={
                     "accelerator": "auto",

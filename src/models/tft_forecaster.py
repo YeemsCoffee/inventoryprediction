@@ -418,10 +418,15 @@ class TFTForecaster:
         # ---------- Validation forecast ----------
         # Forecast the validation period from the end of training data
         n_val = len(val)
+
+        # Slice covariates to cover ONLY train + validation period
+        # This ensures predicted timestamps align exactly with validation timestamps
+        covs_for_val = train_covs.append(val_covs)
+
         pred_scaled = model.predict(
             n=n_val,
             series=train,  # Predict from end of training, not full series
-            future_covariates=covariates_full,
+            future_covariates=covs_for_val,  # Use only train+val covariates
         )
 
         # Inverse-transform predictions and true validation slice
@@ -430,6 +435,14 @@ class TFTForecaster:
         # Get the actual validation data (unscaled)
         n_total = len(series_scaled_full)
         val_unscaled = series_unscaled_full[n_total - n_val :]
+
+        # Ensure timestamps align exactly
+        if not pred_unscaled.time_index.equals(val_unscaled.time_index):
+            raise ValueError(
+                f"Validation prediction timestamps do not match validation data!\n"
+                f"Predicted: {pred_unscaled.time_index[0]} to {pred_unscaled.time_index[-1]}\n"
+                f"Expected:  {val_unscaled.time_index[0]} to {val_unscaled.time_index[-1]}"
+            )
 
         # Compute metrics
         mae_val = mae(val_unscaled, pred_unscaled)

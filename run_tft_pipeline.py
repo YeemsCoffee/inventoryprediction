@@ -158,6 +158,22 @@ def run_tft_pipeline(
                 )
             """))
 
+            # Add location column if it doesn't exist (migration for existing tables)
+            conn.execute(text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'predictions'
+                        AND table_name = 'demand_forecasts'
+                        AND column_name = 'location'
+                    ) THEN
+                        ALTER TABLE predictions.demand_forecasts
+                        ADD COLUMN location VARCHAR(100);
+                    END IF;
+                END $$;
+            """))
+
             # Clear old predictions
             conn.execute(text("""
                 DELETE FROM predictions.demand_forecasts

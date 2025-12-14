@@ -102,10 +102,11 @@ def transform_bronze_to_silver(db):
 
     sql = """
     INSERT INTO silver.sales_transactions (
-        order_id, location_id, customer_id, product_id,
+        transaction_id, order_id, location_id, customer_id, product_id,
         transaction_date, quantity, unit_price, total_amount
     )
     SELECT
+        b.order_id || '-' || p.product_id || '-' || b.date::text as transaction_id,
         b.order_id,
         b.location_id,
         b.customer_id,

@@ -44,15 +44,15 @@ def transform_bronze_to_silver(db):
     print("📋 Populating silver.customers...")
 
     sql = """
-    INSERT INTO silver.customers (customer_id, first_transaction_date, is_guest)
+    INSERT INTO silver.customers (customer_id, valid_from, is_current)
     SELECT
         customer_id,
-        MIN(date) as first_transaction_date,
-        (customer_id = 'Guest') as is_guest
+        MIN(date) as valid_from,
+        TRUE as is_current
     FROM bronze.sales_transactions
     WHERE customer_id IS NOT NULL
     GROUP BY customer_id
-    ON CONFLICT (customer_id) DO NOTHING
+    ON CONFLICT (customer_id) WHERE is_current DO NOTHING
     """
 
     with db.engine.begin() as conn:

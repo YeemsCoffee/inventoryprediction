@@ -31,31 +31,34 @@ class TFTForecaster:
         product_col: str = "product",
         target_col: str = "amount",
         location_col: str = "location",
+        postal_code_col: str = "postal_code",
         weather_df: Optional[pd.DataFrame] = None,
         weather_date_col: str = "date",
-        weather_location_col: str = "location",
+        weather_postal_code_col: str = "postal_code",
     ):
         """
         Initialize TFT forecaster.
 
         Args:
-            data: DataFrame with columns [date_col, product_col, location_col, target_col]
+            data: DataFrame with columns [date_col, product_col, location_col, postal_code_col, target_col]
             date_col: Name of the date column
             product_col: Name of the product identifier column
             target_col: Name of the demand/quantity column
-            location_col: Name of the location column
-            weather_df: Optional weather DataFrame with [date, location, temp_max, temp_min, precipitation, ...]
+            location_col: Name of the location column (for display)
+            postal_code_col: Name of the postal code column (for joining weather)
+            weather_df: Optional weather DataFrame with [date, postal_code, temp_max, temp_min, precipitation, ...]
             weather_date_col: Date column in weather_df
-            weather_location_col: Location column in weather_df
+            weather_postal_code_col: Postal code column in weather_df (for joining)
         """
         self.data = data.copy()
         self.date_col = date_col
         self.product_col = product_col
         self.target_col = target_col
         self.location_col = location_col
+        self.postal_code_col = postal_code_col
         self.weather_df = weather_df.copy() if weather_df is not None else None
         self.weather_date_col = weather_date_col
-        self.weather_location_col = weather_location_col
+        self.weather_postal_code_col = weather_postal_code_col
 
         # Ensure dates are datetime
         self.data[self.date_col] = pd.to_datetime(self.data[self.date_col])
@@ -135,7 +138,7 @@ class TFTForecaster:
         return series
 
     def _prepare_covariates(
-        self, product_name: str, location: str, target_series: "TimeSeries"
+        self, product_name: str, location: str, postal_code: str, target_series: "TimeSeries"
     ) -> "TimeSeries":
         """
         Build future covariates TimeSeries for a (product, location).
@@ -204,14 +207,14 @@ class TFTForecaster:
         # 3. Weather covariates (if available)
         weather_series = None
         if self.weather_df is not None:
-            # Filter weather for this location
+            # Filter weather for this location using postal code
             weather_loc = self.weather_df[
-                self.weather_df[self.weather_location_col] == location
+                self.weather_df[self.weather_postal_code_col] == postal_code
             ].copy()
 
             if not weather_loc.empty:
-                # Identify numeric weather columns (exclude date and location)
-                exclude_cols = {self.weather_date_col, self.weather_location_col}
+                # Identify numeric weather columns (exclude date and postal_code)
+                exclude_cols = {self.weather_date_col, self.weather_postal_code_col}
                 weather_cols = [
                     col
                     for col in weather_loc.columns
@@ -275,6 +278,12 @@ class TFTForecaster:
 
         key = self._make_key(product_name, location)
 
+        # Get postal code for this location
+        location_data = self.data[self.data[self.location_col] == location]
+        if location_data.empty:
+            raise ValueError(f"No data found for location: {location}")
+        postal_code = location_data[self.postal_code_col].iloc[0]
+
         # Build unscaled target TimeSeries
         series = self._prepare_daily_series(product_name, location)
 
@@ -283,7 +292,7 @@ class TFTForecaster:
         series_scaled = target_scaler.fit_transform(series)
 
         # Build covariates
-        covariates = self._prepare_covariates(product_name, location, series)
+        covariates = self._prepare_covariates(product_name, location, postal_code, series)
 
         # Optionally scale covariates (usually not needed if bounded)
         # For simplicity, we'll leave covariates unscaled here

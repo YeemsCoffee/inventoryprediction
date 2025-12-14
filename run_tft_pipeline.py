@@ -46,6 +46,7 @@ def run_tft_pipeline(
             d.date,
             p.product_name as product,
             l.location_name as location,
+            l.postal_code,
             f.quantity as amount
         FROM gold.fact_sales f
         JOIN gold.dim_date d ON f.date_key = d.date_key
@@ -78,9 +79,9 @@ def run_tft_pipeline(
         # Step 2.5: Load weather data
         print("🌤️  Step 2.5: Loading weather data...")
         weather_query = """
-        SELECT date, location, temp_max, temp_min, precipitation
+        SELECT date, zip as postal_code, temp_max, temp_min, precipitation
         FROM gold.weather_daily
-        ORDER BY location, date
+        ORDER BY zip, date
         """
         try:
             with db.engine.connect() as conn:
@@ -99,6 +100,7 @@ def run_tft_pipeline(
         forecaster = TFTForecaster(
             data=data,
             location_col='location',
+            postal_code_col='postal_code',
             weather_df=weather_data
         )
 

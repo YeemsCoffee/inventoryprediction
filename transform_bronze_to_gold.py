@@ -92,11 +92,44 @@ def transform_bronze_to_silver(db):
         result = conn.execute(text(sql))
         print(f"  ✅ Loaded {result.rowcount if hasattr(result, 'rowcount') else '?'} products")
 
-    # 4. Populate silver.transactions
-    # NOTE: silver.transactions table does not exist in current schema
-    # Schema uses silver.orders and silver.line_items instead
-    # Skipping this step - gold layer transformation handles the data
-    print("📋 Skipping silver.transactions (table not in schema)...")
+    # 4. Populate silver.sales_transactions
+    print("📋 Populating silver.sales_transactions...")
+
+    with db.engine.begin() as conn:
+        # Check existing count
+        existing = conn.execute(text("SELECT COUNT(*) FROM silver.sales_transactions")).scalar()
+        print(f"  📊 Existing transactions: {existing}")
+
+    sql = """
+    INSERT INTO silver.sales_transactions (
+        order_id, location_id, customer_id, product_id,
+        transaction_date, quantity, unit_price, total_amount,
+        transaction_hour, transaction_day_of_week,
+        transaction_month, transaction_year
+    )
+    SELECT
+        b.order_id,
+        b.location_id,
+        b.customer_id,
+        p.product_id,
+        b.date as transaction_date,
+        b.amount as quantity,
+        b.price / NULLIF(b.amount, 0) as unit_price,
+        b.price as total_amount,
+        EXTRACT(HOUR FROM b.date) as transaction_hour,
+        EXTRACT(DOW FROM b.date) as transaction_day_of_week,
+        EXTRACT(MONTH FROM b.date) as transaction_month,
+        EXTRACT(YEAR FROM b.date) as transaction_year
+    FROM bronze.sales_transactions b
+    JOIN silver.products p ON b.product = p.product_name
+    WHERE b.amount > 0
+    ON CONFLICT (order_id, product_id, transaction_date) DO NOTHING
+    """
+
+    with db.engine.begin() as conn:
+        result = conn.execute(text(sql))
+        new_count = result.rowcount if hasattr(result, 'rowcount') else 0
+        print(f"  ✅ Loaded {new_count} new transactions")
 
     print()
 

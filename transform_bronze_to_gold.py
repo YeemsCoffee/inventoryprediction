@@ -26,10 +26,10 @@ def transform_bronze_to_silver(db):
     print("📋 Populating silver.locations...")
 
     sql = """
-    INSERT INTO silver.locations (location_id, location_name, status)
+    INSERT INTO silver.locations (location_id, name, status)
     SELECT DISTINCT
         location_id,
-        'Location ' || location_id as location_name,
+        'Location ' || location_id as name,
         'ACTIVE' as status
     FROM bronze.sales_transactions
     WHERE location_id IS NOT NULL

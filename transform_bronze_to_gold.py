@@ -118,6 +118,7 @@ def transform_bronze_to_silver(db):
     FROM bronze.sales_transactions b
     JOIN silver.products p ON b.product = p.product_name
     WHERE b.amount > 0
+    ON CONFLICT (transaction_id) DO NOTHING
     """
 
     with db.engine.begin() as conn:

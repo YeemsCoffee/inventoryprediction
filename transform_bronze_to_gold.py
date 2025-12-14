@@ -103,9 +103,7 @@ def transform_bronze_to_silver(db):
     sql = """
     INSERT INTO silver.sales_transactions (
         order_id, location_id, customer_id, product_id,
-        transaction_date, quantity, unit_price, total_amount,
-        transaction_hour, transaction_day_of_week,
-        transaction_month, transaction_year
+        transaction_date, quantity, unit_price, total_amount
     )
     SELECT
         b.order_id,
@@ -115,11 +113,7 @@ def transform_bronze_to_silver(db):
         b.date as transaction_date,
         b.amount as quantity,
         b.price / NULLIF(b.amount, 0) as unit_price,
-        b.price as total_amount,
-        EXTRACT(HOUR FROM b.date) as transaction_hour,
-        EXTRACT(DOW FROM b.date) as transaction_day_of_week,
-        EXTRACT(MONTH FROM b.date) as transaction_month,
-        EXTRACT(YEAR FROM b.date) as transaction_year
+        b.price as total_amount
     FROM bronze.sales_transactions b
     JOIN silver.products p ON b.product = p.product_name
     WHERE b.amount > 0

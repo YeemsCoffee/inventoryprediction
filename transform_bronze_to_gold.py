@@ -64,17 +64,16 @@ def transform_bronze_to_silver(db):
 
     sql = """
     INSERT INTO silver.products (
-        product_name, base_product_name, has_modifiers, category, is_active
+        product_id, product_name, category_name, is_active
     )
     SELECT DISTINCT
+        product as product_id,
         product as product_name,
-        COALESCE(base_product, product) as base_product_name,
-        (modifiers IS NOT NULL AND modifiers != '') as has_modifiers,
-        category,
+        category as category_name,
         TRUE as is_active
     FROM bronze.sales_transactions
     WHERE product IS NOT NULL AND product != ''
-    ON CONFLICT (product_name) DO NOTHING
+    ON CONFLICT (product_id) DO NOTHING
     """
 
     with db.engine.begin() as conn:

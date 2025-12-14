@@ -171,10 +171,24 @@ def transform_silver_to_gold(db):
     print("📋 Populating gold.dim_location...")
 
     sql = """
-    INSERT INTO gold.dim_location (location_id, location_name, status)
-    SELECT
+    INSERT INTO gold.dim_location (
         location_id,
         location_name,
+        address_line_1,
+        city,
+        state,
+        postal_code,
+        country,
+        status
+    )
+    SELECT
+        location_id,
+        name as location_name,
+        address_line_1,
+        city,
+        state,
+        postal_code,
+        country,
         status
     FROM silver.locations
     ON CONFLICT (location_id) DO NOTHING

@@ -142,16 +142,15 @@ def transform_silver_to_gold(db):
 
     sql = """
     INSERT INTO gold.dim_customer (
-        customer_id, is_guest, first_purchase_date, valid_from, is_current
+        customer_id, valid_from, is_current
     )
     SELECT
         customer_id,
-        is_guest,
-        DATE(first_transaction_date) as first_purchase_date,
-        first_transaction_date as valid_from,
-        TRUE as is_current
+        valid_from,
+        is_current
     FROM silver.customers
-    ON CONFLICT (customer_id, is_current) DO NOTHING
+    WHERE is_current = TRUE
+    ON CONFLICT (customer_id) WHERE is_current DO NOTHING
     """
 
     with db.engine.begin() as conn:

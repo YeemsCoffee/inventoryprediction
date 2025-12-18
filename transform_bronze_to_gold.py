@@ -162,16 +162,15 @@ def transform_silver_to_gold(db):
 
     sql = """
     INSERT INTO gold.dim_product (
-        product_name, base_product_name, has_modifiers, category, is_active
+        product_id, product_name, category_name, is_active
     )
     SELECT
+        product_id,
         product_name,
-        base_product_name,
-        has_modifiers,
-        category,
+        category_name,
         is_active
     FROM silver.products
-    ON CONFLICT DO NOTHING
+    ON CONFLICT (product_id) DO NOTHING
     """
 
     with db.engine.begin() as conn:

@@ -218,9 +218,9 @@ def transform_silver_to_gold(db):
     sql = """
     INSERT INTO gold.fact_sales (
         date_key, customer_sk, product_sk, location_sk,
-        order_id, transaction_timestamp,
-        quantity, unit_price, total_amount,
-        hour_of_day, day_of_week
+        order_id, line_item_id,
+        quantity, unit_price, gross_amount, net_amount,
+        order_timestamp, order_hour, order_day_of_week
     )
     SELECT
         TO_CHAR(t.transaction_date, 'YYYYMMDD')::INTEGER as date_key,
@@ -228,17 +228,17 @@ def transform_silver_to_gold(db):
         p.product_sk,
         l.location_sk,
         t.order_id,
-        t.transaction_date,
+        t.transaction_id as line_item_id,
         t.quantity,
         t.unit_price,
-        t.total_amount,
-        t.transaction_hour,
-        t.transaction_day_of_week
-    FROM silver.transactions t
+        t.total_amount as gross_amount,
+        t.total_amount as net_amount,
+        t.transaction_date as order_timestamp,
+        EXTRACT(HOUR FROM t.transaction_date)::INTEGER as order_hour,
+        EXTRACT(DOW FROM t.transaction_date)::INTEGER as order_day_of_week
+    FROM silver.sales_transactions t
     JOIN gold.dim_customer c ON t.customer_id = c.customer_id AND c.is_current = TRUE
-    JOIN gold.dim_product p ON t.product_id = (
-        SELECT product_id FROM silver.products WHERE product_sk = p.product_sk LIMIT 1
-    )
+    JOIN gold.dim_product p ON t.product_id = p.product_id
     JOIN gold.dim_location l ON t.location_id = l.location_id
     ON CONFLICT DO NOTHING
     """
@@ -254,44 +254,9 @@ def transform_silver_to_gold(db):
     print()
 
     # 6. Build customer metrics
-    print("📋 Building gold.customer_metrics...")
-
-    sql = """
-    INSERT INTO gold.customer_metrics (
-        customer_sk, recency_days, frequency, monetary_total,
-        avg_order_value, total_orders, total_items,
-        first_purchase_date, last_purchase_date, days_as_customer
-    )
-    SELECT
-        c.customer_sk,
-        EXTRACT(DAY FROM (NOW() - MAX(t.transaction_date))) as recency_days,
-        COUNT(DISTINCT t.order_id) as frequency,
-        SUM(t.total_amount) as monetary_total,
-        AVG(t.total_amount) as avg_order_value,
-        COUNT(DISTINCT t.order_id) as total_orders,
-        SUM(t.quantity) as total_items,
-        DATE(MIN(t.transaction_date)) as first_purchase_date,
-        DATE(MAX(t.transaction_date)) as last_purchase_date,
-        EXTRACT(DAY FROM (MAX(t.transaction_date) - MIN(t.transaction_date))) as days_as_customer
-    FROM silver.transactions t
-    JOIN gold.dim_customer c ON t.customer_id = c.customer_id AND c.is_current = TRUE
-    GROUP BY c.customer_sk
-    ON CONFLICT (customer_sk) DO UPDATE SET
-        recency_days = EXCLUDED.recency_days,
-        frequency = EXCLUDED.frequency,
-        monetary_total = EXCLUDED.monetary_total,
-        avg_order_value = EXCLUDED.avg_order_value,
-        total_orders = EXCLUDED.total_orders,
-        total_items = EXCLUDED.total_items,
-        last_purchase_date = EXCLUDED.last_purchase_date,
-        days_as_customer = EXCLUDED.days_as_customer,
-        calculated_at = NOW()
-    """
-
-    with db.engine.begin() as conn:
-        result = conn.execute(text(sql))
-        print(f"  ✅ Calculated metrics for {result.rowcount if hasattr(result, 'rowcount') else '?'} customers")
-
+    # NOTE: gold.customer_metrics table does not exist in current schema
+    # Skipping this step
+    print("📋 Skipping gold.customer_metrics (table not in schema)...")
     print()
 
 

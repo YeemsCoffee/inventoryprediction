@@ -176,6 +176,38 @@ def run_tft_pipeline(
                 END $$;
             """))
 
+            # Add model_type column if it doesn't exist
+            conn.execute(text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'predictions'
+                        AND table_name = 'demand_forecasts'
+                        AND column_name = 'model_type'
+                    ) THEN
+                        ALTER TABLE predictions.demand_forecasts
+                        ADD COLUMN model_type VARCHAR(50);
+                    END IF;
+                END $$;
+            """))
+
+            # Add trained_at column if it doesn't exist
+            conn.execute(text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'predictions'
+                        AND table_name = 'demand_forecasts'
+                        AND column_name = 'trained_at'
+                    ) THEN
+                        ALTER TABLE predictions.demand_forecasts
+                        ADD COLUMN trained_at TIMESTAMP;
+                    END IF;
+                END $$;
+            """))
+
             # Clear old predictions
             conn.execute(text("""
                 DELETE FROM predictions.demand_forecasts

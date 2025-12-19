@@ -35,6 +35,8 @@ class TFTForecaster:
         weather_df: Optional[pd.DataFrame] = None,
         weather_date_col: str = "date",
         weather_postal_code_col: str = "postal_code",
+        calendar_df: Optional[pd.DataFrame] = None,
+        school_proximity_df: Optional[pd.DataFrame] = None,
     ):
         """
         Initialize TFT forecaster.
@@ -49,6 +51,8 @@ class TFTForecaster:
             weather_df: Optional weather DataFrame with [date, postal_code, temp_max, temp_min, precipitation, ...]
             weather_date_col: Date column in weather_df
             weather_postal_code_col: Postal code column in weather_df (for joining)
+            calendar_df: Optional calendar DataFrame with [date, is_holiday, is_weekend, ...]
+            school_proximity_df: Optional school proximity DataFrame with [location, school_count, ...]
         """
         self.data = data.copy()
         self.date_col = date_col
@@ -59,6 +63,8 @@ class TFTForecaster:
         self.weather_df = weather_df.copy() if weather_df is not None else None
         self.weather_date_col = weather_date_col
         self.weather_postal_code_col = weather_postal_code_col
+        self.calendar_df = calendar_df.copy() if calendar_df is not None else None
+        self.school_proximity_df = school_proximity_df.copy() if school_proximity_df is not None else None
 
         # Ensure dates are datetime
         self.data[self.date_col] = pd.to_datetime(self.data[self.date_col])
@@ -66,6 +72,8 @@ class TFTForecaster:
             self.weather_df[self.weather_date_col] = pd.to_datetime(
                 self.weather_df[self.weather_date_col]
             )
+        if self.calendar_df is not None:
+            self.calendar_df['date'] = pd.to_datetime(self.calendar_df['date'])
 
         # Store models, scalers, and series per (product, location)
         # Keys are "product|location" strings
@@ -145,6 +153,8 @@ class TFTForecaster:
 
         Includes:
         - Calendar features (day_of_week, month as one-hot)
+        - Holiday indicator (binary)
+        - Weekend indicator (binary)
         - Weather features (if available)
         - Step change indicator for second store opening
 
@@ -153,6 +163,7 @@ class TFTForecaster:
         Args:
             product_name: Product identifier
             location: Location name
+            postal_code: Postal code for location
             target_series: The target TimeSeries (for date range alignment)
 
         Returns:
@@ -277,10 +288,64 @@ class TFTForecaster:
                     # Weather might start before sales data, causing dimension mismatch
                     weather_series = weather_series.slice(start_date, extended_end_date)
 
+        # 4. Calendar features (holidays and weekends)
+        holiday_series = None
+        weekend_series = None
+        if self.calendar_df is not None:
+            # Extend calendar features into the future
+            calendar_extended = self.calendar_df.copy()
+            last_date = calendar_extended['date'].max()
+
+            if extended_end_date > last_date:
+                # Generate future dates beyond what we have
+                future_dates = pd.date_range(
+                    start=last_date + pd.Timedelta(days=1),
+                    end=extended_end_date,
+                    freq='D'
+                )
+
+                # For future dates, we don't know holidays, so set to 0
+                # Weekend can be calculated from date
+                future_df = pd.DataFrame({
+                    'date': future_dates,
+                    'is_holiday': 0,
+                    'is_weekend': future_dates.dayofweek.isin([5, 6]).astype(int)
+                })
+
+                calendar_extended = pd.concat([calendar_extended, future_df], ignore_index=True)
+
+            # Filter to exact date range
+            calendar_extended = calendar_extended[
+                (calendar_extended['date'] >= start_date) &
+                (calendar_extended['date'] <= extended_end_date)
+            ].sort_values('date').reset_index(drop=True)
+
+            # Create TimeSeries for holiday indicator
+            if 'is_holiday' in calendar_extended.columns:
+                holiday_series = TimeSeries.from_dataframe(
+                    calendar_extended,
+                    time_col='date',
+                    value_cols='is_holiday',
+                    freq='D'
+                )
+
+            # Create TimeSeries for weekend indicator
+            if 'is_weekend' in calendar_extended.columns:
+                weekend_series = TimeSeries.from_dataframe(
+                    calendar_extended,
+                    time_col='date',
+                    value_cols='is_weekend',
+                    freq='D'
+                )
+
         # Combine all covariates
         covariate_list = [dow_series, month_series, step_series]
         if weather_series is not None:
             covariate_list.append(weather_series)
+        if holiday_series is not None:
+            covariate_list.append(holiday_series)
+        if weekend_series is not None:
+            covariate_list.append(weekend_series)
 
         # Stack covariates into a single multivariate TimeSeries
         combined_covariates = concatenate(covariate_list, axis=1)

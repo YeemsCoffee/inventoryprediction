@@ -44,6 +44,10 @@ great-expectations>=0.18.0
 requests>=2.31.0
 python-dotenv>=1.0.0
 
+# Calendar and Location Features
+holidays>=0.38  # US federal holidays
+geopy>=2.4.0    # Geocoding and distance calculations
+
 # API Framework
 fastapi>=0.100.0
 uvicorn>=0.23.0

@@ -242,9 +242,33 @@ class TFTForecaster:
                     # For dates beyond available weather, use forward fill (last known values)
                     weather_end = weather_series.end_time()
                     if extended_end_date > weather_end:
-                        # Create a series with the extended range and forward fill
-                        weather_series = weather_series.pad(
-                            n=int((extended_end_date - weather_end).days)
+                        # Convert to pandas, extend with forward fill, recreate TimeSeries
+                        weather_df = weather_series.pd_dataframe()
+
+                        # Create extended date range
+                        extended_dates = pd.date_range(
+                            start=weather_end + pd.Timedelta(days=1),
+                            end=extended_end_date,
+                            freq="D"
+                        )
+
+                        # Forward fill last values
+                        last_values = weather_df.iloc[-1]
+                        extended_df = pd.DataFrame(
+                            [last_values.values] * len(extended_dates),
+                            index=extended_dates,
+                            columns=weather_df.columns
+                        )
+
+                        # Combine original and extended
+                        combined_df = pd.concat([weather_df, extended_df])
+
+                        # Recreate TimeSeries
+                        weather_series = TimeSeries.from_dataframe(
+                            combined_df.reset_index(),
+                            time_col="index",
+                            value_cols=weather_cols,
+                            freq="D"
                         )
 
         # Combine all covariates

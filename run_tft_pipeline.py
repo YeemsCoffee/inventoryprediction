@@ -208,10 +208,9 @@ def run_tft_pipeline(
                 END $$;
             """))
 
-            # Clear old predictions
+            # Clear all old predictions (we're regenerating them)
             conn.execute(text("""
-                DELETE FROM predictions.demand_forecasts
-                WHERE forecast_date >= CURRENT_DATE
+                TRUNCATE TABLE predictions.demand_forecasts
             """))
 
         # Save new predictions

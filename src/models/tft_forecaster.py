@@ -242,34 +242,36 @@ class TFTForecaster:
                     # For dates beyond available weather, use forward fill (last known values)
                     weather_end = weather_series.end_time()
                     if extended_end_date > weather_end:
-                        # Convert to pandas, extend with forward fill, recreate TimeSeries
-                        weather_df = weather_series.pd_dataframe()
+                        # Get last values using universal API
+                        last_values = weather_series[-1:].values()[0]  # Last row of values
 
                         # Create extended date range
+                        n_days_to_extend = int((extended_end_date - weather_end).days)
                         extended_dates = pd.date_range(
                             start=weather_end + pd.Timedelta(days=1),
                             end=extended_end_date,
                             freq="D"
                         )
 
-                        # Forward fill last values
-                        last_values = weather_df.iloc[-1]
+                        # Create DataFrame with forward-filled values
                         extended_df = pd.DataFrame(
-                            [last_values.values] * len(extended_dates),
+                            [last_values] * len(extended_dates),
                             index=extended_dates,
-                            columns=weather_df.columns
+                            columns=weather_cols
                         )
+                        extended_df.index.name = 'date'
 
-                        # Combine original and extended
-                        combined_df = pd.concat([weather_df, extended_df])
-
-                        # Recreate TimeSeries
-                        weather_series = TimeSeries.from_dataframe(
-                            combined_df.reset_index(),
-                            time_col="index",
+                        # Create TimeSeries from extended data
+                        extended_series = TimeSeries.from_dataframe(
+                            extended_df.reset_index(),
+                            time_col="date",
                             value_cols=weather_cols,
                             freq="D"
                         )
+
+                        # Append to original weather series
+                        from darts import concatenate as concat_series
+                        weather_series = concat_series([weather_series, extended_series], axis=0)
 
         # Combine all covariates
         covariate_list = [dow_series, month_series, step_series]

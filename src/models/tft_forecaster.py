@@ -273,6 +273,10 @@ class TFTForecaster:
                         from darts import concatenate as concat_series
                         weather_series = concat_series([weather_series, extended_series], axis=0)
 
+                    # CRITICAL: Slice weather to match exact extended date range
+                    # Weather might start before sales data, causing dimension mismatch
+                    weather_series = weather_series.slice(start_date, extended_end_date)
+
         # Combine all covariates
         covariate_list = [dow_series, month_series, step_series]
         if weather_series is not None:

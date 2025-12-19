@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.utils.database import RDSConnector
 from src.models.tft_forecaster import TFTForecaster
+from src.data.calendar_features import generate_all_calendar_features
 from sqlalchemy import text
 
 
@@ -62,18 +63,36 @@ def run_tft_pipeline(
         print(f"📍 Locations: {', '.join(data['location'].unique())}")
         print()
 
-        # Step 2: Select top (product, location) pairs
-        print("📦 Step 2: Selecting top (product, location) pairs...")
+        # Step 2: Select top products PER LOCATION
+        print("📦 Step 2: Selecting top products per location...")
+
+        # Group by product and location to get total sales
         product_location_sales = (
             data.groupby(['product', 'location'])['amount']
             .sum()
-            .sort_values(ascending=False)
+            .reset_index()
         )
-        top_pairs = product_location_sales[product_location_sales >= min_sales].head(max_products)
+
+        # For each location, select top N products with min_sales threshold
+        top_pairs_list = []
+        for location in product_location_sales['location'].unique():
+            location_data = product_location_sales[product_location_sales['location'] == location]
+            location_data = location_data[location_data['amount'] >= min_sales]
+            location_top = location_data.nlargest(max_products, 'amount')
+            top_pairs_list.append(location_top)
+
+        top_pairs_df = pd.concat(top_pairs_list, ignore_index=True)
+        top_pairs = pd.Series(
+            top_pairs_df['amount'].values,
+            index=pd.MultiIndex.from_arrays([top_pairs_df['product'], top_pairs_df['location']])
+        )
 
         print(f"✅ Selected {len(top_pairs)} (product, location) pairs:")
-        for i, ((product, location), total) in enumerate(top_pairs.items(), 1):
-            print(f"   {i}. {product[:40]:40s} @ {location:15s} (Total: {total:,.0f})")
+        for location in product_location_sales['location'].unique():
+            location_pairs = top_pairs_df[top_pairs_df['location'] == location]
+            print(f"\n   📍 {location}:")
+            for i, row in enumerate(location_pairs.itertuples(), 1):
+                print(f"      {i}. {row.product[:40]:40s} (Total: {row.amount:,.0f})")
         print()
 
         # Step 2.5: Load weather data
@@ -95,13 +114,51 @@ def run_tft_pipeline(
             weather_data = None
         print()
 
+        # Step 2.75: Generate calendar features (holidays, weekends, school proximity)
+        print("📅 Step 2.75: Generating calendar and location features...")
+        try:
+            # Get date range from data
+            data_start = data['date'].min().strftime('%Y-%m-%d')
+            data_end = (data['date'].max() + pd.Timedelta(days=365)).strftime('%Y-%m-%d')
+
+            # Get unique postal codes from data
+            postal_codes = dict(zip(data['location'].unique(), data.groupby('location')['postal_code'].first()))
+
+            # Generate all calendar features
+            calendar_features = generate_all_calendar_features(
+                start_date=data_start,
+                end_date=data_end,
+                postal_codes=postal_codes,
+                school_radius_miles=10.0
+            )
+
+            holidays_df = calendar_features['holidays']
+            schools_df = calendar_features.get('schools')
+
+            print(f"✅ Generated {len(holidays_df):,} days of calendar data")
+            print(f"   - Holidays found: {holidays_df['is_holiday'].sum()}")
+            print(f"   - Weekend days: {holidays_df['is_weekend'].sum()}")
+            if schools_df is not None:
+                print(f"   - School proximity data for {len(schools_df)} locations")
+                for _, row in schools_df.iterrows():
+                    print(f"     • {row['location']}: {row['school_count']} schools within 10 miles")
+
+        except Exception as e:
+            print(f"⚠️  Could not generate calendar features: {e}")
+            print(f"   Error details: {str(e)}")
+            holidays_df = None
+            schools_df = None
+        print()
+
         # Step 3: Train models
         print("🤖 Step 3: Training TFT models...")
         forecaster = TFTForecaster(
             data=data,
             location_col='location',
             postal_code_col='postal_code',
-            weather_df=weather_data
+            weather_df=weather_data,
+            calendar_df=holidays_df,
+            school_proximity_df=schools_df
         )
 
         all_results = []

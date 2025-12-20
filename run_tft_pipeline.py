@@ -273,6 +273,12 @@ def run_tft_pipeline(
         # Save new predictions
         if all_predictions:
             predictions_df = pd.concat(all_predictions, ignore_index=True)
+
+            # Clear old predictions immediately before insert to avoid race conditions
+            with db.engine.begin() as conn:
+                conn.execute(text("TRUNCATE TABLE predictions.demand_forecasts"))
+                conn.commit()
+
             predictions_df.to_sql(
                 'demand_forecasts',
                 db.engine,

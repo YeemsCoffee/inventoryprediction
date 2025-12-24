@@ -139,9 +139,9 @@ def run_tft_pipeline(
             print(f"   - Holidays found: {holidays_df['is_holiday'].sum()}")
             print(f"   - Weekend days: {holidays_df['is_weekend'].sum()}")
             if schools_df is not None:
-                print(f"   - School proximity data for {len(schools_df)} locations")
+                print(f"   - College/university proximity data for {len(schools_df)} locations")
                 for _, row in schools_df.iterrows():
-                    print(f"     • {row['location']}: {row['school_count']} schools within 10 miles")
+                    print(f"     • {row['location']}: {row['college_count']} colleges/universities within 10 miles")
 
         except Exception as e:
             print(f"⚠️  Could not generate calendar features: {e}")

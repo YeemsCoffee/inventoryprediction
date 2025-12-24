@@ -152,9 +152,27 @@ def get_schools_near_location(
     """
 
     try:
-        response = requests.post(overpass_url, data={'data': overpass_query}, timeout=30)
-        response.raise_for_status()
-        data = response.json()
+        # Try up to 3 times with exponential backoff
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    overpass_url,
+                    data={'data': overpass_query},
+                    timeout=60  # Increased timeout to 60 seconds
+                )
+                response.raise_for_status()
+                data = response.json()
+                break  # Success, exit retry loop
+            except (requests.exceptions.Timeout, requests.exceptions.HTTPError) as e:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s...")
+                    import time
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"All {max_retries} attempts failed for ZIP {zipcode}")
+                    raise
 
         schools = []
         for element in data.get('elements', []):
@@ -209,22 +227,36 @@ def create_school_proximity_features(
     location_features = []
 
     for location_name, zipcode in postal_codes.items():
-        logger.info(f"Finding colleges/universities near {location_name} (ZIP: {zipcode})...")
-        schools = get_schools_near_location(zipcode, radius_miles)
+        try:
+            logger.info(f"Finding colleges/universities near {location_name} (ZIP: {zipcode})...")
+            schools = get_schools_near_location(zipcode, radius_miles)
 
-        feature = {
-            'location': location_name,
-            'postal_code': zipcode,
-            'college_count': len(schools),  # Total colleges/universities
-            'nearest_college_distance': schools[0]['distance_miles'] if schools else None,
-            'universities_count': sum(1 for s in schools if s['type'] == 'university'),
-            'colleges_within_5mi': sum(1 for s in schools if s['distance_miles'] <= 5.0)
-        }
-        location_features.append(feature)
+            feature = {
+                'location': location_name,
+                'postal_code': zipcode,
+                'college_count': len(schools),  # Total colleges/universities
+                'nearest_college_distance': schools[0]['distance_miles'] if schools else None,
+                'universities_count': sum(1 for s in schools if s['type'] == 'university'),
+                'colleges_within_5mi': sum(1 for s in schools if s['distance_miles'] <= 5.0)
+            }
+            location_features.append(feature)
 
-        # Log top 5 nearest colleges/universities
-        for i, school in enumerate(schools[:5], 1):
-            logger.info(f"  {i}. {school['name']} ({school['type']}) - {school['distance_miles']} mi")
+            # Log top 5 nearest colleges/universities
+            for i, school in enumerate(schools[:5], 1):
+                logger.info(f"  {i}. {school['name']} ({school['type']}) - {school['distance_miles']} mi")
+
+        except Exception as e:
+            logger.error(f"Failed to get school data for {location_name}: {e}")
+            # Add feature with null values if API call fails
+            feature = {
+                'location': location_name,
+                'postal_code': zipcode,
+                'college_count': 0,
+                'nearest_college_distance': None,
+                'universities_count': 0,
+                'colleges_within_5mi': 0
+            }
+            location_features.append(feature)
 
     return pd.DataFrame(location_features)
 

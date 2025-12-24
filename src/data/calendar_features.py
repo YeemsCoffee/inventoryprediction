@@ -141,14 +141,14 @@ def get_schools_near_location(
     # Overpass API query for ONLY colleges and universities (excludes K-12 schools)
     overpass_url = "http://overpass-api.de/api/interpreter"
     overpass_query = f"""
-    [out:json];
+    [out:json][timeout:60];
     (
       node["amenity"="university"](around:{radius_meters},{lat},{lon});
       way["amenity"="university"](around:{radius_meters},{lat},{lon});
       node["amenity"="college"](around:{radius_meters},{lat},{lon});
       way["amenity"="college"](around:{radius_meters},{lat},{lon});
     );
-    out center;
+    out center 100;
     """
 
     try:

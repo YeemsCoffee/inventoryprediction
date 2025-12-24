@@ -119,14 +119,15 @@ def get_schools_near_location(
     radius_miles: float = 10.0
 ) -> List[Dict]:
     """
-    Get schools and universities within radius of a ZIP code using Overpass API.
+    Get colleges and universities within radius of a ZIP code using Overpass API.
+    Note: Excludes K-12 schools, only includes colleges and universities.
 
     Args:
         zipcode: US ZIP code
         radius_miles: Search radius in miles
 
     Returns:
-        List of dictionaries with school information
+        List of dictionaries with college/university information
     """
     # Geocode the ZIP code
     coords = geocode_zipcode(zipcode)
@@ -137,13 +138,11 @@ def get_schools_near_location(
     lat, lon = coords
     radius_meters = radius_miles * 1609.34  # Convert miles to meters
 
-    # Overpass API query for schools and universities
+    # Overpass API query for ONLY colleges and universities (excludes K-12 schools)
     overpass_url = "http://overpass-api.de/api/interpreter"
     overpass_query = f"""
     [out:json];
     (
-      node["amenity"="school"](around:{radius_meters},{lat},{lon});
-      way["amenity"="school"](around:{radius_meters},{lat},{lon});
       node["amenity"="university"](around:{radius_meters},{lat},{lon});
       way["amenity"="university"](around:{radius_meters},{lat},{lon});
       node["amenity"="college"](around:{radius_meters},{lat},{lon});
@@ -184,7 +183,7 @@ def get_schools_near_location(
         # Sort by distance
         schools.sort(key=lambda x: x['distance_miles'])
 
-        logger.info(f"Found {len(schools)} schools within {radius_miles} miles of ZIP {zipcode}")
+        logger.info(f"Found {len(schools)} colleges/universities within {radius_miles} miles of ZIP {zipcode}")
         return schools
 
     except Exception as e:
@@ -197,32 +196,33 @@ def create_school_proximity_features(
     radius_miles: float = 10.0
 ) -> pd.DataFrame:
     """
-    Create school proximity features for each location.
+    Create college/university proximity features for each location.
+    Note: Only includes colleges and universities, not K-12 schools.
 
     Args:
         postal_codes: Dict mapping location_name -> postal_code
         radius_miles: Search radius in miles
 
     Returns:
-        DataFrame with location, postal_code, school_count, nearest_school_distance
+        DataFrame with location, postal_code, college_count, nearest_college_distance, etc.
     """
     location_features = []
 
     for location_name, zipcode in postal_codes.items():
-        logger.info(f"Finding schools near {location_name} (ZIP: {zipcode})...")
+        logger.info(f"Finding colleges/universities near {location_name} (ZIP: {zipcode})...")
         schools = get_schools_near_location(zipcode, radius_miles)
 
         feature = {
             'location': location_name,
             'postal_code': zipcode,
-            'school_count': len(schools),
-            'nearest_school_distance': schools[0]['distance_miles'] if schools else None,
+            'college_count': len(schools),  # Total colleges/universities
+            'nearest_college_distance': schools[0]['distance_miles'] if schools else None,
             'universities_count': sum(1 for s in schools if s['type'] == 'university'),
-            'schools_within_5mi': sum(1 for s in schools if s['distance_miles'] <= 5.0)
+            'colleges_within_5mi': sum(1 for s in schools if s['distance_miles'] <= 5.0)
         }
         location_features.append(feature)
 
-        # Log top 5 nearest schools
+        # Log top 5 nearest colleges/universities
         for i, school in enumerate(schools[:5], 1):
             logger.info(f"  {i}. {school['name']} ({school['type']}) - {school['distance_miles']} mi")
 

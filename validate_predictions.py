@@ -10,9 +10,15 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 from zoneinfo import ZoneInfo
 >>>>>>> b8057bd (Fix timezone issue in validate_predictions.py)
+=======
+from zoneinfo import ZoneInfo
+=======
+>>>>>>> a9a81f6 (Add validation script to compare predictions against actual sales data)
+>>>>>>> b1d9c8c (Add validation script to compare predictions against actual sales data)
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -20,11 +26,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from src.utils.database import RDSConnector
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 # Use PST timezone to match business operations
 PST = ZoneInfo('America/Los_Angeles')
 
 >>>>>>> b8057bd (Fix timezone issue in validate_predictions.py)
+=======
+# Use PST timezone to match business operations
+PST = ZoneInfo('America/Los_Angeles')
+
+=======
+>>>>>>> a9a81f6 (Add validation script to compare predictions against actual sales data)
+>>>>>>> b1d9c8c (Add validation script to compare predictions against actual sales data)
 
 def calculate_metrics(actuals, predictions):
     """Calculate accuracy metrics."""
@@ -53,6 +67,7 @@ def validate_predictions(lookback_days=7):
     print("🔍 PREDICTION VALIDATION REPORT")
     print("=" * 80)
 <<<<<<< HEAD
+<<<<<<< HEAD
     print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Validation Period: Last {lookback_days} days")
     print()
@@ -63,6 +78,8 @@ def validate_predictions(lookback_days=7):
 
     print(f"Comparing predictions vs actuals from {start_date} to {end_date}")
 =======
+=======
+>>>>>>> b1d9c8c (Add validation script to compare predictions against actual sales data)
 
     # Use PST timezone for all date calculations to match business operations
     now_pst = datetime.now(PST)
@@ -75,7 +92,21 @@ def validate_predictions(lookback_days=7):
     start_date = end_date - timedelta(days=lookback_days)
 
     print(f"Comparing predictions vs actuals from {start_date} to {end_date} (PST)")
+<<<<<<< HEAD
 >>>>>>> b8057bd (Fix timezone issue in validate_predictions.py)
+=======
+=======
+    print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Validation Period: Last {lookback_days} days")
+    print()
+
+    # Calculate date range for validation
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=lookback_days)
+
+    print(f"Comparing predictions vs actuals from {start_date} to {end_date}")
+>>>>>>> a9a81f6 (Add validation script to compare predictions against actual sales data)
+>>>>>>> b1d9c8c (Add validation script to compare predictions against actual sales data)
     print()
 
     # 1. Get actual sales data

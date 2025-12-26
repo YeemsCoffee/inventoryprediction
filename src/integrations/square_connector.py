@@ -9,8 +9,12 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import json
 from dotenv import load_dotenv
+from zoneinfo import ZoneInfo
 
 load_dotenv()
+
+# Business timezone (PST/PDT)
+PST = ZoneInfo('America/Los_Angeles')
 
 
 class SquareDataConnector:
@@ -100,12 +104,17 @@ class SquareDataConnector:
         Fetch orders/transactions from Square.
 
         Args:
-            start_date: Start date (YYYY-MM-DD)
-            end_date: End date (YYYY-MM-DD)
+            start_date: Start date (YYYY-MM-DD) in PST timezone
+            end_date: End date (YYYY-MM-DD) in PST timezone
             location_ids: List of location IDs (if None, fetches from all locations)
 
         Returns:
-            DataFrame with order data
+            DataFrame with order data (timestamps converted to PST)
+
+        Note:
+            - Input dates are treated as PST (business timezone)
+            - Dates are converted to UTC for Square API calls
+            - Returned timestamps are converted back to PST for storage
         """
         if location_ids is None:
             locations = self.get_locations()
@@ -114,8 +123,17 @@ class SquareDataConnector:
         all_orders = []
 
         # Convert dates to RFC 3339 format
-        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        # IMPORTANT: Treat input dates as PST (business timezone), then convert to UTC for Square API
+        start_dt_naive = datetime.strptime(start_date, '%Y-%m-%d')
+        end_dt_naive = datetime.strptime(end_date, '%Y-%m-%d')
+
+        # Make timezone-aware in PST
+        start_dt_pst = start_dt_naive.replace(tzinfo=PST)
+        end_dt_pst = end_dt_naive.replace(tzinfo=PST)
+
+        # Convert to UTC for Square API (Square expects UTC timestamps)
+        start_dt_utc = start_dt_pst.astimezone(ZoneInfo('UTC'))
+        end_dt_utc = end_dt_pst.astimezone(ZoneInfo('UTC'))
 
         query = {
             'location_ids': location_ids,
@@ -123,8 +141,8 @@ class SquareDataConnector:
                 'filter': {
                     'date_time_filter': {
                         'created_at': {
-                            'start_at': start_dt.isoformat() + 'Z',
-                            'end_at': end_dt.isoformat() + 'Z'
+                            'start_at': start_dt_utc.isoformat(),
+                            'end_at': end_dt_utc.isoformat()
                         }
                     }
                 }
@@ -164,7 +182,10 @@ class SquareDataConnector:
 
         for order in orders:
             order_id = order.get('id')
-            created_at = pd.to_datetime(order.get('created_at'))
+            # Parse timestamp from Square (UTC) and convert to PST
+            created_at_utc = pd.to_datetime(order.get('created_at'))
+            # Convert to PST for storage (business timezone)
+            created_at = created_at_utc.tz_convert(PST) if created_at_utc.tz is not None else created_at_utc.tz_localize('UTC').tz_convert(PST)
             customer_id = order.get('customer_id', 'Guest')
             location_id = order.get('location_id')
 

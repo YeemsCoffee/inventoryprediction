@@ -9,12 +9,22 @@ import os
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+<<<<<<< HEAD
+=======
+from zoneinfo import ZoneInfo
+>>>>>>> b8057bd (Fix timezone issue in validate_predictions.py)
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.utils.database import RDSConnector
 
+<<<<<<< HEAD
+=======
+# Use PST timezone to match business operations
+PST = ZoneInfo('America/Los_Angeles')
+
+>>>>>>> b8057bd (Fix timezone issue in validate_predictions.py)
 
 def calculate_metrics(actuals, predictions):
     """Calculate accuracy metrics."""
@@ -42,6 +52,7 @@ def validate_predictions(lookback_days=7):
     print("=" * 80)
     print("🔍 PREDICTION VALIDATION REPORT")
     print("=" * 80)
+<<<<<<< HEAD
     print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Validation Period: Last {lookback_days} days")
     print()
@@ -51,6 +62,20 @@ def validate_predictions(lookback_days=7):
     start_date = end_date - timedelta(days=lookback_days)
 
     print(f"Comparing predictions vs actuals from {start_date} to {end_date}")
+=======
+
+    # Use PST timezone for all date calculations to match business operations
+    now_pst = datetime.now(PST)
+    print(f"Generated: {now_pst.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    print(f"Validation Period: Last {lookback_days} days")
+    print()
+
+    # Calculate date range for validation using PST
+    end_date = now_pst.date()
+    start_date = end_date - timedelta(days=lookback_days)
+
+    print(f"Comparing predictions vs actuals from {start_date} to {end_date} (PST)")
+>>>>>>> b8057bd (Fix timezone issue in validate_predictions.py)
     print()
 
     # 1. Get actual sales data

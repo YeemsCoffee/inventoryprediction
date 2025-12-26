@@ -33,12 +33,14 @@ def calculate_metrics(actuals, predictions):
     }
 
 
-def validate_predictions(lookback_days=7):
+def validate_predictions(lookback_days=7, start_date=None, end_date=None):
     """
     Validate predictions against actual sales.
 
     Args:
-        lookback_days: Number of recent days to validate (default 7)
+        lookback_days: Number of recent days to validate (default 7) - ignored if start_date provided
+        start_date: Optional start date (YYYY-MM-DD format)
+        end_date: Optional end date (YYYY-MM-DD format)
     """
 
     db = RDSConnector()
@@ -50,13 +52,25 @@ def validate_predictions(lookback_days=7):
     # Use PST timezone for all date calculations to match business operations
     now_pst = datetime.now(PST)
     print(f"Generated: {now_pst.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-    print(f"Validation Period: Last {lookback_days} days")
-    print()
 
     # Calculate date range for validation using PST
-    end_date = now_pst.date()
-    start_date = end_date - timedelta(days=lookback_days)
+    if start_date and end_date:
+        # Use specified date range
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        print(f"Validation Period: {start_date} to {end_date} (custom range)")
+    elif start_date:
+        # Start date only - validate single day
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end_date = start_date
+        print(f"Validation Period: {start_date} (single day)")
+    else:
+        # Use lookback_days from today
+        end_date = now_pst.date()
+        start_date = end_date - timedelta(days=lookback_days)
+        print(f"Validation Period: Last {lookback_days} days")
 
+    print()
     print(f"Comparing predictions vs actuals from {start_date} to {end_date} (PST)")
     print()
 
@@ -287,7 +301,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Validate TFT predictions against actuals')
     parser.add_argument('--days', type=int, default=7,
                         help='Number of recent days to validate (default: 7)')
+    parser.add_argument('--start-date', type=str,
+                        help='Start date in YYYY-MM-DD format (e.g., 2024-12-24)')
+    parser.add_argument('--end-date', type=str,
+                        help='End date in YYYY-MM-DD format (optional, defaults to start-date if not provided)')
 
     args = parser.parse_args()
 
-    validate_predictions(lookback_days=args.days)
+    validate_predictions(
+        lookback_days=args.days,
+        start_date=args.start_date,
+        end_date=args.end_date
+    )

@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_batch, Json
@@ -68,14 +69,18 @@ class SquareToPostgresSync:
         print("=" * 70)
         print()
 
-        # Calculate date range
+        # Calculate date range in Pacific timezone to match business hours
+        pacific_tz = ZoneInfo('America/Los_Angeles')
+        now_pacific = datetime.now(pacific_tz)
+
         if oldest_first:
             # Fetch oldest data: start from 3 years ago, go for days_back days
-            start_date = datetime.now() - timedelta(days=1095)  # 3 years ago (Square max)
+            start_date = now_pacific - timedelta(days=1095)  # 3 years ago (Square max)
             end_date = start_date + timedelta(days=days_back)
         else:
             # Fetch most recent data: go back days_back from today
-            end_date = datetime.now()
+            # Add 1 day buffer to ensure we capture all of today's orders
+            end_date = now_pacific + timedelta(days=1)
             start_date = end_date - timedelta(days=days_back)
 
         print(f"📅 Date range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")

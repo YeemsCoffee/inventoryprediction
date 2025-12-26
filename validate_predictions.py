@@ -123,6 +123,16 @@ def validate_predictions(lookback_days=7, start_date=None, end_date=None):
     actuals_df['date'] = pd.to_datetime(actuals_df['date'])
     predictions_df['date'] = pd.to_datetime(predictions_df['date'])
 
+    # DEBUG: Show sample data before merge
+    print("\n🔍 DEBUG - Sample Actuals:")
+    print(actuals_df[['date', 'product_name', 'location']].head(3))
+    print("\n🔍 DEBUG - Sample Predictions:")
+    print(predictions_df[['date', 'product_name', 'location']].head(3))
+    print("\n🔍 DEBUG - Column types:")
+    print(f"Actuals date dtype: {actuals_df['date'].dtype}")
+    print(f"Predictions date dtype: {predictions_df['date'].dtype}")
+    print()
+
     # Merge on date, product, location
     comparison_df = pd.merge(
         actuals_df,

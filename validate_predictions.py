@@ -79,7 +79,7 @@ def validate_predictions(lookback_days=7, start_date=None, end_date=None):
     actuals_query = f"""
     SELECT
         d.date,
-        p.product_name,
+        TRIM(SPLIT_PART(p.product_name, '(', 1)) as product_name,
         l.location_name as location,
         SUM(f.quantity) as actual_quantity
     FROM gold.fact_sales f
@@ -87,8 +87,8 @@ def validate_predictions(lookback_days=7, start_date=None, end_date=None):
     JOIN gold.dim_product p ON f.product_sk = p.product_sk
     JOIN gold.dim_location l ON f.location_sk = l.location_sk
     WHERE d.date >= '{start_date}' AND d.date <= '{end_date}'
-    GROUP BY d.date, p.product_name, l.location_name
-    ORDER BY d.date, l.location_name, p.product_name
+    GROUP BY d.date, TRIM(SPLIT_PART(p.product_name, '(', 1)), l.location_name
+    ORDER BY d.date, l.location_name, TRIM(SPLIT_PART(p.product_name, '(', 1))
     """
 
     with db.engine.connect() as conn:

@@ -99,11 +99,11 @@ class SquareToPostgresSync:
             current_start = start_date
 
             while current_start < end_date:
-                # Get first day of next month
+                # Get first day of next month (preserve timezone info)
                 if current_start.month == 12:
-                    current_end = datetime(current_start.year + 1, 1, 1) - timedelta(days=1)
+                    current_end = datetime(current_start.year + 1, 1, 1, tzinfo=current_start.tzinfo) - timedelta(days=1)
                 else:
-                    current_end = datetime(current_start.year, current_start.month + 1, 1) - timedelta(days=1)
+                    current_end = datetime(current_start.year, current_start.month + 1, 1, tzinfo=current_start.tzinfo) - timedelta(days=1)
 
                 # Don't go past end_date
                 if current_end > end_date:
@@ -111,11 +111,11 @@ class SquareToPostgresSync:
 
                 date_ranges.append((current_start, current_end))
 
-                # Move to next month
+                # Move to next month (preserve timezone info)
                 if current_end.month == 12:
-                    current_start = datetime(current_end.year + 1, 1, 1)
+                    current_start = datetime(current_end.year + 1, 1, 1, tzinfo=current_end.tzinfo)
                 else:
-                    current_start = datetime(current_end.year, current_end.month + 1, 1)
+                    current_start = datetime(current_end.year, current_end.month + 1, 1, tzinfo=current_end.tzinfo)
 
             print(f"📦 Splitting into {len(date_ranges)} monthly chunks")
             print()

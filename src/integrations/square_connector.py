@@ -180,17 +180,34 @@ class SquareDataConnector:
         """Parse Square orders into a clean DataFrame."""
         rows = []
 
+        debug_first = True  # Flag to debug first order only
         for order in orders:
             order_id = order.get('id')
             # Parse timestamp from Square API (returns UTC, convert to PST for storage)
-            created_at_utc = pd.to_datetime(order.get('created_at'))
+            raw_timestamp = order.get('created_at')
+            created_at_utc = pd.to_datetime(raw_timestamp)
+
+            # DEBUG: Print first order to see what Square sends
+            if debug_first:
+                print(f"\n🔍 DEBUG - First Order Timestamp:")
+                print(f"  Raw from Square API: {raw_timestamp}")
+                print(f"  After pd.to_datetime: {created_at_utc}")
+                print(f"  Has timezone?: {created_at_utc.tz}")
+                print(f"  Timezone name: {created_at_utc.tzinfo}")
+                debug_first = False
+
             # Convert from UTC to PST for business timezone
             if created_at_utc.tz is not None:
                 # Already timezone-aware (has UTC offset), convert to PST
                 created_at = created_at_utc.tz_convert(PST)
+                if not debug_first and order_id == orders[0].get('id'):
+                    print(f"  Used tz_convert → Result: {created_at}\n")
             else:
                 # Naive timestamp - assume UTC and convert to PST
                 created_at = created_at_utc.tz_localize('UTC').tz_convert(PST)
+                if not debug_first and order_id == orders[0].get('id'):
+                    print(f"  Used tz_localize + convert → Result: {created_at}\n")
+
             customer_id = order.get('customer_id', 'Guest')
             location_id = order.get('location_id')
 

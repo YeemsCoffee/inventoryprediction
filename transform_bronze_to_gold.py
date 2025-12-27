@@ -100,10 +100,10 @@ def transform_bronze_to_silver(db):
         b.amount as quantity,
         b.price / NULLIF(b.amount, 0) as unit_price,
         b.price as total_amount,
-        EXTRACT(HOUR FROM b.date) as transaction_hour,
-        EXTRACT(DOW FROM b.date) as transaction_day_of_week,
-        EXTRACT(MONTH FROM b.date) as transaction_month,
-        EXTRACT(YEAR FROM b.date) as transaction_year
+        EXTRACT(HOUR FROM (b.date AT TIME ZONE 'America/Los_Angeles')) as transaction_hour,
+        EXTRACT(DOW FROM (b.date AT TIME ZONE 'America/Los_Angeles')) as transaction_day_of_week,
+        EXTRACT(MONTH FROM (b.date AT TIME ZONE 'America/Los_Angeles')) as transaction_month,
+        EXTRACT(YEAR FROM (b.date AT TIME ZONE 'America/Los_Angeles')) as transaction_year
     FROM bronze.sales_transactions b
     JOIN silver.products p ON b.product = p.product_name
     WHERE b.amount > 0
@@ -199,7 +199,7 @@ def transform_silver_to_gold(db):
         hour_of_day, day_of_week
     )
     SELECT
-        TO_CHAR(t.transaction_date, 'YYYYMMDD')::INTEGER as date_key,
+        TO_CHAR(t.transaction_date AT TIME ZONE 'America/Los_Angeles', 'YYYYMMDD')::INTEGER as date_key,
         c.customer_sk,
         p.product_sk,
         l.location_sk,

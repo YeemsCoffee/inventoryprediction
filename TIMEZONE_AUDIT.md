@@ -55,41 +55,32 @@ EXTRACT(DOW FROM (bo.created_at AT TIME ZONE 'America/Los_Angeles'))::INTEGER as
 
 ---
 
-## ⚠️ NEEDS REVIEW: Transform Script (`transform_bronze_to_gold.py`)
+## ✅ FIXED: Transform Script (`transform_bronze_to_gold.py`)
 
-### Silver Layer Transformation
+### Silver Layer Transformation - FIXED ✅
 
 **Line 99:** Transaction date passthrough
 ```sql
 b.date as transaction_date,
 ```
-**Status:** ⚠️ DEPENDS - If bronze.sales_transactions.date is already PST (from Square connector), this is fine
+**Status:** ✅ Correct - Passes through timezone-aware timestamp
 
-**Lines 103-106:** Time extractions from transaction_date
-```sql
-EXTRACT(HOUR FROM b.date) as transaction_hour,
-EXTRACT(DOW FROM b.date) as transaction_day_of_week,
-EXTRACT(MONTH FROM b.date) as transaction_month,
-EXTRACT(YEAR FROM b.date) as transaction_year
-```
-**Status:** ⚠️ DEPENDS - If b.date is timezone-aware PST, needs AT TIME ZONE
-**Recommended Fix:**
+**Lines 103-106:** Time extractions from transaction_date (FIXED)
 ```sql
 EXTRACT(HOUR FROM (b.date AT TIME ZONE 'America/Los_Angeles')) as transaction_hour,
 EXTRACT(DOW FROM (b.date AT TIME ZONE 'America/Los_Angeles')) as transaction_day_of_week,
+EXTRACT(MONTH FROM (b.date AT TIME ZONE 'America/Los_Angeles')) as transaction_month,
+EXTRACT(YEAR FROM (b.date AT TIME ZONE 'America/Los_Angeles')) as transaction_year
 ```
+**Status:** ✅ FIXED - Now converts to PST before extracting time parts
 
-### Gold Layer Transformation
+### Gold Layer Transformation - FIXED ✅
 
-**Line 202:** Date key generation from silver
-```sql
-TO_CHAR(t.transaction_date, 'YYYYMMDD')::INTEGER as date_key,
-```
-**Status:** ⚠️ POTENTIAL ISSUE - Should convert to PST explicitly
-**Recommended Fix:**
+**Line 202:** Date key generation from silver (FIXED)
 ```sql
 TO_CHAR(t.transaction_date AT TIME ZONE 'America/Los_Angeles', 'YYYYMMDD')::INTEGER as date_key,
 ```
+**Status:** ✅ FIXED - Now converts to PST before creating date_key
 
 ---
 
@@ -119,23 +110,21 @@ ORDER BY table_schema, table_name, column_name;
 
 ---
 
-## 📋 Recommended Actions
+## 📋 Actions Completed ✅
 
-### High Priority
+### All Critical Issues Fixed!
 1. ✅ **DONE:** Fix `sync_square_to_postgres.py` date_key generation (Line 440)
-2. ⚠️ **TODO:** Check bronze.sales_transactions schema for timezone awareness
-3. ⚠️ **TODO:** Fix `transform_bronze_to_gold.py` date_key generation (Line 202)
-4. ⚠️ **TODO:** Add timezone conversion to silver time extractions (Lines 103-106)
+2. ✅ **DONE:** Verified bronze.sales_transactions schema - all timezone-aware
+3. ✅ **DONE:** Fix `transform_bronze_to_gold.py` date_key generation (Line 202)
+4. ✅ **DONE:** Add timezone conversion to silver time extractions (Lines 103-106)
+5. ✅ **DONE:** Fix `validate_predictions.py` to use PST timezone
+6. ✅ **DONE:** Fix Square connector to handle PST dates correctly
 
-### Medium Priority
-5. **TODO:** Verify all date columns use consistent timezone storage
-6. **TODO:** Add timezone validation tests
-
-### Documentation
-7. **TODO:** Document timezone conventions in README:
-   - All dates stored in PST
-   - API calls use UTC
-   - Transformations explicitly convert to PST
+### Remaining Tasks
+7. ⚠️ **TODO:** Resync all data to apply timezone fixes
+8. ⚠️ **TODO:** Verify Dec 24 validation shows 26 Americanos (not 27)
+9. 📝 **TODO:** Add timezone validation tests
+10. 📝 **TODO:** Document timezone conventions in main README
 
 ---
 

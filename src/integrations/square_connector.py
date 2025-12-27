@@ -182,10 +182,15 @@ class SquareDataConnector:
 
         for order in orders:
             order_id = order.get('id')
-            # Parse timestamp from Square (UTC) and convert to PST
-            created_at_utc = pd.to_datetime(order.get('created_at'))
-            # Convert to PST for storage (business timezone)
-            created_at = created_at_utc.tz_convert(PST) if created_at_utc.tz is not None else created_at_utc.tz_localize('UTC').tz_convert(PST)
+            # Parse timestamp from Square (Square returns PST timestamps, not UTC!)
+            created_at_raw = pd.to_datetime(order.get('created_at'))
+            # Square already returns PST - just ensure it's timezone-aware
+            if created_at_raw.tz is None:
+                # If naive, it's already PST from Square
+                created_at = created_at_raw.tz_localize(PST)
+            else:
+                # If timezone-aware, keep as-is (Square sends PST)
+                created_at = created_at_raw
             customer_id = order.get('customer_id', 'Guest')
             location_id = order.get('location_id')
 

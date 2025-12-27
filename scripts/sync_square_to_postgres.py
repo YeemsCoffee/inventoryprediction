@@ -436,8 +436,8 @@ class SquareToPostgresSync:
                 gross_amount, discount_amount, net_amount,
                 order_timestamp, order_hour, order_day_of_week
             )
-            SELECT DISTINCT ON (bli.uid, TO_CHAR(bo.created_at, 'YYYYMMDD')::INTEGER)
-                TO_CHAR(bo.created_at, 'YYYYMMDD')::INTEGER as date_key,
+            SELECT DISTINCT ON (bli.uid, TO_CHAR(bo.created_at AT TIME ZONE 'America/Los_Angeles', 'YYYYMMDD')::INTEGER)
+                TO_CHAR(bo.created_at AT TIME ZONE 'America/Los_Angeles', 'YYYYMMDD')::INTEGER as date_key,
                 dc.customer_sk,
                 dp.product_sk,
                 dl.location_sk,

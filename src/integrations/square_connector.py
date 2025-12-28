@@ -200,17 +200,18 @@ class SquareDataConnector:
                     print(f"  closed_at PST:  {closed_pst.strftime('%Y-%m-%d %H:%M:%S')}")
                 debug_count += 1
 
-            # Parse timestamp from Square API (returns UTC, convert to PST for storage)
-            raw_timestamp = order.get('created_at')
-            created_at_utc = pd.to_datetime(raw_timestamp)
+            # Parse closed_at timestamp from Square API (when order was completed/paid)
+            # This matches Square CSV exports and represents actual transaction time
+            raw_timestamp = order.get('closed_at')
+            timestamp_utc = pd.to_datetime(raw_timestamp)
 
             # Convert from UTC to PST for business timezone
-            if created_at_utc.tz is not None:
+            if timestamp_utc.tz is not None:
                 # Already timezone-aware (has UTC offset), convert to PST
-                created_at = created_at_utc.tz_convert(PST)
+                created_at = timestamp_utc.tz_convert(PST)
             else:
                 # Naive timestamp - assume UTC and convert to PST
-                created_at = created_at_utc.tz_localize('UTC').tz_convert(PST)
+                created_at = timestamp_utc.tz_localize('UTC').tz_convert(PST)
 
             customer_id = order.get('customer_id', 'Guest')
             location_id = order.get('location_id')

@@ -180,33 +180,37 @@ class SquareDataConnector:
         """Parse Square orders into a clean DataFrame."""
         rows = []
 
-        debug_first = True  # Flag to debug first order only
+        debug_count = 0  # Counter for debug output
         for order in orders:
             order_id = order.get('id')
+
+            # DEBUG: Print all timestamp fields for first 3 orders
+            if debug_count < 3:
+                print(f"\n🔍 DEBUG - Order {debug_count + 1} (ID: {order_id}):")
+                print(f"  created_at:  {order.get('created_at')}")
+                print(f"  updated_at:  {order.get('updated_at')}")
+                print(f"  closed_at:   {order.get('closed_at')}")
+
+                # Convert each to PST to see the difference
+                if order.get('created_at'):
+                    created_pst = pd.to_datetime(order.get('created_at')).tz_convert(PST)
+                    print(f"  created_at PST: {created_pst.strftime('%Y-%m-%d %H:%M:%S')}")
+                if order.get('closed_at'):
+                    closed_pst = pd.to_datetime(order.get('closed_at')).tz_convert(PST)
+                    print(f"  closed_at PST:  {closed_pst.strftime('%Y-%m-%d %H:%M:%S')}")
+                debug_count += 1
+
             # Parse timestamp from Square API (returns UTC, convert to PST for storage)
             raw_timestamp = order.get('created_at')
             created_at_utc = pd.to_datetime(raw_timestamp)
-
-            # DEBUG: Print first order to see what Square sends
-            if debug_first:
-                print(f"\n🔍 DEBUG - First Order Timestamp:")
-                print(f"  Raw from Square API: {raw_timestamp}")
-                print(f"  After pd.to_datetime: {created_at_utc}")
-                print(f"  Has timezone?: {created_at_utc.tz}")
-                print(f"  Timezone name: {created_at_utc.tzinfo}")
-                debug_first = False
 
             # Convert from UTC to PST for business timezone
             if created_at_utc.tz is not None:
                 # Already timezone-aware (has UTC offset), convert to PST
                 created_at = created_at_utc.tz_convert(PST)
-                if not debug_first and order_id == orders[0].get('id'):
-                    print(f"  Used tz_convert → Result: {created_at}\n")
             else:
                 # Naive timestamp - assume UTC and convert to PST
                 created_at = created_at_utc.tz_localize('UTC').tz_convert(PST)
-                if not debug_first and order_id == orders[0].get('id'):
-                    print(f"  Used tz_localize + convert → Result: {created_at}\n")
 
             customer_id = order.get('customer_id', 'Guest')
             location_id = order.get('location_id')

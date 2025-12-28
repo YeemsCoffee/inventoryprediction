@@ -180,25 +180,8 @@ class SquareDataConnector:
         """Parse Square orders into a clean DataFrame."""
         rows = []
 
-        debug_count = 0  # Counter for debug output
         for order in orders:
             order_id = order.get('id')
-
-            # DEBUG: Print all timestamp fields for first 3 orders
-            if debug_count < 3:
-                print(f"\n🔍 DEBUG - Order {debug_count + 1} (ID: {order_id}):")
-                print(f"  created_at:  {order.get('created_at')}")
-                print(f"  updated_at:  {order.get('updated_at')}")
-                print(f"  closed_at:   {order.get('closed_at')}")
-
-                # Convert each to PST to see the difference
-                if order.get('created_at'):
-                    created_pst = pd.to_datetime(order.get('created_at')).tz_convert(PST)
-                    print(f"  created_at PST: {created_pst.strftime('%Y-%m-%d %H:%M:%S')}")
-                if order.get('closed_at'):
-                    closed_pst = pd.to_datetime(order.get('closed_at')).tz_convert(PST)
-                    print(f"  closed_at PST:  {closed_pst.strftime('%Y-%m-%d %H:%M:%S')}")
-                debug_count += 1
 
             # Parse closed_at timestamp from Square API (when order was completed/paid)
             # This matches Square CSV exports and represents actual transaction time

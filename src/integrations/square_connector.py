@@ -185,7 +185,12 @@ class SquareDataConnector:
 
             # Parse closed_at timestamp from Square API (when order was completed/paid)
             # This matches Square CSV exports and represents actual transaction time
-            raw_timestamp = order.get('closed_at')
+            # Fall back to created_at if closed_at is not available (open/pending orders)
+            raw_timestamp = order.get('closed_at') or order.get('created_at')
+            if not raw_timestamp:
+                # Skip orders with no timestamp at all
+                continue
+
             timestamp_utc = pd.to_datetime(raw_timestamp)
 
             # Convert from UTC to PST for business timezone

@@ -6,6 +6,7 @@ Predicts daily packing lists per store for the next 2 weeks.
 
 import csv
 import math
+import os
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -214,9 +215,64 @@ def print_packing_lists(results, stores, all_products, forecast_start, num_days)
 
 
 # ---------------------------------------------------------------------------
-# 4. Main
+# 4. Export to CSV
+# ---------------------------------------------------------------------------
+
+def export_csv(results, stores, all_products, forecast_start, num_days, output_dir="."):
+    """Write one CSV per store: rows = products, columns = dates."""
+    dates = [forecast_start + timedelta(days=i) for i in range(num_days)]
+    date_headers = [d.strftime("%m/%d/%Y") for d in dates]
+    filepaths = []
+
+    for store in stores:
+        filename = f"packing_list_{store}_{forecast_start.strftime('%Y-%m-%d')}.csv"
+        filepath = os.path.join(output_dir, filename)
+
+        active_products = []
+        for product in sorted(all_products):
+            forecasts = results[store][product]
+            total = sum(q for _, q in forecasts)
+            if total >= 0.5:
+                active_products.append((product, forecasts, total))
+        active_products.sort(key=lambda x: x[2], reverse=True)
+
+        with open(filepath, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Product"] + date_headers + ["2-Week Total"])
+
+            for product, forecasts, total in active_products:
+                row = [product]
+                for _, qty in forecasts:
+                    row.append(round(qty) if round(qty) > 0 else "")
+                row.append(round(total))
+                writer.writerow(row)
+
+            # Totals row
+            grand_total_by_day = defaultdict(float)
+            for product, forecasts, _ in active_products:
+                for d, qty in forecasts:
+                    grand_total_by_day[d] += round(qty)
+
+            totals_row = ["DAILY TOTAL"]
+            grand_sum = 0
+            for d in dates:
+                val = round(grand_total_by_day[d])
+                grand_sum += val
+                totals_row.append(val)
+            totals_row.append(grand_sum)
+            writer.writerow([])
+            writer.writerow(totals_row)
+
+        filepaths.append(filepath)
+        print(f"Saved: {filepath}")
+
+    return filepaths
+
+
+# ---------------------------------------------------------------------------
+# 5. Main
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     results, stores, all_products, forecast_start, num_days = generate_packing_lists()
-    print_packing_lists(results, stores, all_products, forecast_start, num_days)
+    export_csv(results, stores, all_products, forecast_start, num_days)

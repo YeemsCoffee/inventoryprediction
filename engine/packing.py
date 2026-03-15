@@ -131,11 +131,13 @@ def generate_packing_list_csv(
             for product, (rounded, total) in sorted_products:
                 par = par_levels.get((store, product)) if show_par else None
 
+                daily_vals = np.minimum(rounded, par) if par is not None else rounded
+
                 row = [product]
-                for i, val in enumerate(rounded):
+                for i, val in enumerate(daily_vals):
                     grand_total_by_day[i] += val
-                    row.append(val if val > 0 else "")
-                row.append(int(total))
+                    row.append(int(val) if val > 0 else "")
+                row.append(int(daily_vals.sum()))
                 if show_par:
                     row.append(par if par is not None else "")
                 writer.writerow(row)
@@ -191,14 +193,16 @@ def print_packing_list(
     for product, (rounded, total) in sorted_products:
         par = par_levels.get((store, product)) if show_par else None
 
+        daily_vals = np.minimum(rounded, par) if par is not None else rounded
+
         line = f"  {product:<28}"
-        for i, val in enumerate(rounded):
+        for i, val in enumerate(daily_vals):
             grand_total_by_day[i] += val
             if val > 0:
                 line += f"{val:>7}"
             else:
                 line += f"{'·':>7}"
-        line += f"{total:>8}"
+        line += f"{int(daily_vals.sum()):>8}"
         if show_par:
             line += f"{(par if par is not None else ''):>6}"
         print(line)

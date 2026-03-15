@@ -29,7 +29,7 @@ from engine.feedback import (
     compute_correction_factors, record_forecast, update_actuals,
     generate_feedback_report,
 )
-from engine.packing import apply_safety_stock, generate_packing_list_csv, print_packing_list
+from engine.packing import apply_safety_stock, generate_packing_list_csv, print_packing_list, load_par_levels
 from config.products import STORES
 
 
@@ -137,13 +137,21 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
     print("\n[6/6] Applying safety stock and generating packing lists...")
     predictions = apply_safety_stock(predictions, daily)
 
+    # Load par levels if the file exists
+    par_xlsx = os.path.join(data_dir, "Store Max Items.xlsx")
+    par_levels = load_par_levels(par_xlsx) if os.path.exists(par_xlsx) else None
+    if par_levels:
+        print(f"  Loaded par levels for {len(par_levels)} store/product combinations.")
+    else:
+        print("  No par levels file found — skipping par cap.")
+
     # Print to console
     for store in stores:
-        print_packing_list(predictions, forecast_dates, store)
+        print_packing_list(predictions, forecast_dates, store, par_levels=par_levels)
 
     # Export CSVs
     print()
-    filepaths = generate_packing_list_csv(predictions, forecast_dates, stores, output_dir)
+    filepaths = generate_packing_list_csv(predictions, forecast_dates, stores, output_dir, par_levels=par_levels)
 
     # Record forecasts for feedback loop
     for (store, product), preds in predictions.items():

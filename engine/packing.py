@@ -11,6 +11,24 @@ from collections import defaultdict
 from config.products import SPORADIC_PRODUCTS
 
 
+def load_par_levels(xlsx_path: str) -> dict:
+    """
+    Load par levels from 'Store Max Items.xlsx'.
+    Returns dict of (store, product) -> max_quantity.
+    """
+    import openpyxl
+    wb = openpyxl.load_workbook(xlsx_path)
+    ws = wb.active
+    par = {}
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i == 0:
+            continue  # skip header
+        store, product, max_qty = row[0], row[1], row[2]
+        if store and product and max_qty is not None:
+            par[(store, product)] = int(max_qty)
+    return par
+
+
 def apply_safety_stock(
     predictions: dict,
     daily_demand: pd.DataFrame,
@@ -70,10 +88,12 @@ def generate_packing_list_csv(
     dates: pd.DatetimeIndex,
     stores: list,
     output_dir: str = "output",
+    par_levels: dict = None,
 ) -> list:
     """
     Write packing list CSVs (one per store).
     Returns list of generated file paths.
+    par_levels: dict of (store, product) -> max_quantity. If provided, totals are capped at par.
     """
     os.makedirs(output_dir, exist_ok=True)
     filepaths = []
@@ -97,24 +117,49 @@ def generate_packing_list_csv(
         filepath = os.path.join(output_dir, filename)
 
         date_headers = [d.strftime("%m/%d/%Y") for d in dates]
+        show_par = par_levels is not None
 
         with open(filepath, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["Product"] + date_headers + ["2-Week Total"])
+            header = ["Product"] + date_headers + ["2-Week Total"]
+            if show_par:
+                header += ["Max (Par)"]
+            writer.writerow(header)
 
             grand_total_by_day = np.zeros(len(dates))
 
             for product, (rounded, total) in sorted_products:
+                par = par_levels.get((store, product)) if show_par else None
+                capped_total = min(total, par) if par is not None else total
+
+                # Scale daily values down proportionally if capped
+                if par is not None and total > par and total > 0:
+                    scale = par / total
+                    daily_vals = np.round(rounded * scale).astype(int)
+                    # Ensure sum doesn't exceed par due to rounding
+                    diff = daily_vals.sum() - par
+                    if diff > 0:
+                        for i in range(diff):
+                            idx = np.argmax(daily_vals)
+                            daily_vals[idx] -= 1
+                    capped_total = daily_vals.sum()
+                else:
+                    daily_vals = rounded
+
                 row = [product]
-                for i, val in enumerate(rounded):
+                for i, val in enumerate(daily_vals):
                     grand_total_by_day[i] += val
                     row.append(val if val > 0 else "")
-                row.append(int(total))
+                row.append(int(capped_total))
+                if show_par:
+                    row.append(par if par is not None else "")
                 writer.writerow(row)
 
             # Totals row
             writer.writerow([])
             totals_row = ["DAILY TOTAL"] + [int(v) for v in grand_total_by_day] + [int(grand_total_by_day.sum())]
+            if show_par:
+                totals_row += [""]
             writer.writerow(totals_row)
 
         filepaths.append(filepath)
@@ -127,6 +172,7 @@ def print_packing_list(
     predictions: dict,
     dates: pd.DatetimeIndex,
     store: str,
+    par_levels: dict = None,
 ):
     """Print a formatted packing list to stdout."""
     store_products = {}
@@ -145,27 +191,47 @@ def print_packing_list(
     print(f"  Period: {dates[0].strftime('%m/%d/%Y')} - {dates[-1].strftime('%m/%d/%Y')}")
     print(f"{'=' * 80}")
 
+    show_par = par_levels is not None
     header = f"  {'Product':<28}"
     for d in dates:
         header += f"{d.strftime('%m/%d'):>7}"
     header += f"{'TOTAL':>8}"
+    if show_par:
+        header += f"{'MAX':>6}"
     print(header)
-    print("  " + "-" * (28 + 7 * len(dates) + 8))
+    print("  " + "-" * (28 + 7 * len(dates) + 8 + (6 if show_par else 0)))
 
     grand_total_by_day = np.zeros(len(dates))
 
     for product, (rounded, total) in sorted_products:
+        par = par_levels.get((store, product)) if show_par else None
+
+        if par is not None and total > par and total > 0:
+            scale = par / total
+            daily_vals = np.round(rounded * scale).astype(int)
+            diff = daily_vals.sum() - par
+            if diff > 0:
+                for i in range(diff):
+                    idx = np.argmax(daily_vals)
+                    daily_vals[idx] -= 1
+            capped_total = daily_vals.sum()
+        else:
+            daily_vals = rounded
+            capped_total = total
+
         line = f"  {product:<28}"
-        for i, val in enumerate(rounded):
+        for i, val in enumerate(daily_vals):
             grand_total_by_day[i] += val
             if val > 0:
                 line += f"{val:>7}"
             else:
                 line += f"{'·':>7}"
-        line += f"{total:>8}"
+        line += f"{capped_total:>8}"
+        if show_par:
+            line += f"{(par if par is not None else ''):>6}"
         print(line)
 
-    print("  " + "-" * (28 + 7 * len(dates) + 8))
+    print("  " + "-" * (28 + 7 * len(dates) + 8 + (6 if show_par else 0)))
     totals_line = f"  {'DAILY TOTAL':<28}"
     for v in grand_total_by_day:
         totals_line += f"{int(v):>7}"

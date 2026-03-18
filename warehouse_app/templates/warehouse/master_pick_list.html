@@ -1,6 +1,94 @@
 {% extends "base.html" %}
 {% block title %}Master Pick List - Warehouse Replenishment{% endblock %}
 {% block content %}
-<h1>Master Pick List</h1>
-<p>Phase 4 implementation pending.</p>
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
+    <h1>Master Pick List</h1>
+    <form method="GET" style="display:flex; align-items:center; gap:0.5rem;" class="no-print">
+        <input type="date" name="plan_date" value="{{ plan_date }}" onchange="this.form.submit()">
+    </form>
+</div>
+
+{% if not plan %}
+<p style="color:#666;">No plan found for {{ plan_date }}.</p>
+{% else %}
+<div style="display:flex; gap:0.75rem; margin-bottom:1rem; flex-wrap:wrap; align-items:center;" class="no-print">
+    <form method="GET" style="display:flex; gap:0.5rem; align-items:center;">
+        <input type="hidden" name="plan_date" value="{{ plan_date }}">
+        <select name="category" onchange="this.form.submit()">
+            <option value="">All Categories</option>
+            {% for cat in categories %}
+            <option value="{{ cat }}" {{ 'selected' if selected_category == cat }}>{{ cat }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" name="q" placeholder="Search item or SKU..." value="{{ search_query }}" style="width:200px;">
+        <button type="submit" class="btn btn-sm btn-secondary">Search</button>
+    </form>
+    <button onclick="window.print()" class="btn btn-sm btn-secondary">Print</button>
+</div>
+
+<div style="font-size:0.85rem; color:#666; margin-bottom:0.5rem;">
+    <strong>{{ plan_date }}</strong> &middot; <span class="badge badge-{{ plan.status }}">{{ plan.status }}</span> &middot; {{ pick_items|length }} items
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Category</th>
+            <th>Item</th>
+            <th>SKU</th>
+            <th>UOM</th>
+            <th style="text-align:right;">Rec. Qty</th>
+            <th style="text-align:right;">Actual Qty</th>
+            <th style="text-align:center;">Stores</th>
+            <th>Status</th>
+            <th class="no-print"></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in pick_items %}
+        <tr class="pick-row" data-item-id="{{ item.id }}">
+            <td>{{ item.category }}</td>
+            <td><strong>{{ item.item_name }}</strong></td>
+            <td>{{ item.sku }}</td>
+            <td>{{ item.unit_of_measure }}</td>
+            <td style="text-align:right; font-weight:700; font-size:1.05rem;">{{ "%.1f"|format(item.total_recommended) }}</td>
+            <td style="text-align:right;">{{ "%.1f"|format(item.total_actual) if item.total_actual else "—" }}</td>
+            <td style="text-align:center;">{{ item.store_count }}</td>
+            <td>
+                {% set ss = status_summary.get(item.id, {}) %}
+                {% if ss.get('pending', 0) > 0 %}<span class="badge badge-pending">{{ ss.pending }} pend</span> {% endif %}
+                {% if ss.get('picked', 0) > 0 %}<span class="badge badge-picked">{{ ss.picked }} pick</span> {% endif %}
+                {% if ss.get('loaded', 0) > 0 %}<span class="badge badge-loaded">{{ ss.loaded }} load</span> {% endif %}
+                {% if ss.get('delivered', 0) > 0 %}<span class="badge badge-delivered">{{ ss.delivered }} del</span> {% endif %}
+                {% if ss.get('shorted', 0) > 0 %}<span class="badge badge-shorted">{{ ss.shorted }} short</span> {% endif %}
+            </td>
+            <td class="no-print">
+                <button class="btn btn-sm btn-secondary toggle-breakdown" data-target="breakdown-{{ item.id }}" onclick="toggleBreakdown('breakdown-{{ item.id }}')">+</button>
+            </td>
+        </tr>
+        <tr id="breakdown-{{ item.id }}" class="breakdown-row" style="display:none;">
+            <td colspan="9" style="padding:0.5rem 1rem; background:#f8f9fa;">
+                <table style="box-shadow:none; margin:0; font-size:0.85rem;">
+                    <thead>
+                        <tr><th>Store</th><th style="text-align:right;">Rec.</th><th style="text-align:right;">Actual</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for bd in store_breakdown.get(item.id, []) %}
+                        <tr>
+                            <td>{{ bd.store_name }}</td>
+                            <td style="text-align:right;">{{ "%.1f"|format(bd.recommended) }}</td>
+                            <td style="text-align:right;">{{ "%.1f"|format(bd.actual) if bd.actual is not none else "—" }}</td>
+                            <td><span class="badge badge-{{ bd.status }}">{{ bd.status }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9">No items found.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
 {% endblock %}

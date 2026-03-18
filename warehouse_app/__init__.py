@@ -35,6 +35,7 @@ def create_app(config_name=None):
 
     from warehouse_app.blueprints.warehouse import warehouse_bp
     app.register_blueprint(warehouse_bp)
+    csrf.exempt(warehouse_bp)  # JSON API endpoints in this blueprint
 
     from warehouse_app.blueprints.admin import admin_bp
     app.register_blueprint(admin_bp)

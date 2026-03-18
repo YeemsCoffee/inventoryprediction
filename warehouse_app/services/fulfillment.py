@@ -9,21 +9,21 @@ from warehouse_app.models.replenishment_plan_line import ReplenishmentPlanLine
 VALID_STATUSES = ('pending', 'picked', 'loaded', 'delivered', 'shorted')
 
 
-def update_line_status(line_id, new_status, actual_quantity=None, picker_note=None):
+def update_line_status(line_id, new_status=None, actual_quantity=None, picker_note=None):
     """
-    Update status and optionally actual_quantity / picker_note on a plan line.
+    Update status and/or actual_quantity / picker_note on a plan line.
 
     Returns the updated line or raises ValueError.
     """
-    if new_status not in VALID_STATUSES:
-        raise ValueError(f'Invalid status: {new_status}')
-
     line = ReplenishmentPlanLine.query.get(line_id)
     if line is None:
         raise ValueError(f'Plan line {line_id} not found')
 
-    line.status = new_status
-    line.last_status_change_at = datetime.now(timezone.utc)
+    if new_status is not None:
+        if new_status not in VALID_STATUSES:
+            raise ValueError(f'Invalid status: {new_status}')
+        line.status = new_status
+        line.last_status_change_at = datetime.now(timezone.utc)
 
     if actual_quantity is not None:
         line.actual_quantity = actual_quantity

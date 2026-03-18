@@ -1,6 +1,77 @@
 {% extends "base.html" %}
 {% block title %}Dashboard - Warehouse Replenishment{% endblock %}
 {% block content %}
-<h1>Dashboard</h1>
-<p>Phase 4 implementation pending.</p>
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
+    <h1>Dashboard</h1>
+    <form method="GET" style="display:flex; align-items:center; gap:0.5rem;">
+        <label for="plan_date" style="font-weight:600; font-size:0.9rem;">Plan Date:</label>
+        <input type="date" id="plan_date" name="plan_date" value="{{ stats.plan_date }}" onchange="this.form.submit()">
+    </form>
+</div>
+
+{% if stats.plan_exists %}
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
+    <div class="stat-card">
+        <div class="stat-label">Plan Status</div>
+        <div><span class="badge badge-{{ stats.plan_status }}">{{ stats.plan_status }}</span></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Stores</div>
+        <div class="stat-value">{{ stats.total_stores }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Total Lines</div>
+        <div class="stat-value">{{ stats.total_lines }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Total Qty to Pick</div>
+        <div class="stat-value">{{ "%.0f"|format(stats.total_quantity) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Pending</div>
+        <div class="stat-value" style="color:#856404;">{{ stats.pending_lines }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Picked</div>
+        <div class="stat-value" style="color:#004085;">{{ stats.picked_lines }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Loaded</div>
+        <div class="stat-value" style="color:#155724;">{{ stats.loaded_lines }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Delivered</div>
+        <div class="stat-value" style="color:#28a745;">{{ stats.delivered_lines }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Shorted</div>
+        <div class="stat-value" style="color:#dc3545;">{{ stats.shorted_lines }}</div>
+    </div>
+</div>
+
+<div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:2rem;">
+    {% if current_user.role == 'admin' %}
+    <a href="{{ url_for('plans.generate') }}" class="btn btn-primary">Generate Daily Plan</a>
+    {% endif %}
+    <a href="{{ url_for('warehouse.master_pick_list', plan_date=stats.plan_date) }}" class="btn btn-success">Master Pick List</a>
+    <a href="{{ url_for('warehouse.exceptions', plan_date=stats.plan_date) }}" class="btn btn-warning">Exceptions / Shortages</a>
+</div>
+
+{% if stores %}
+<h2 style="font-size:1.1rem; margin-bottom:0.75rem;">Store Delivery Sheets</h2>
+<div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+    {% for store in stores %}
+    <a href="{{ url_for('warehouse.store_delivery_sheet', store_id=store.id, plan_date=stats.plan_date) }}" class="btn btn-secondary">{{ store.name }}</a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% else %}
+<div style="background:#fff; padding:2rem; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); text-align:center;">
+    <p style="font-size:1.1rem; color:#666; margin-bottom:1rem;">No plan exists for {{ stats.plan_date }}.</p>
+    {% if current_user.role == 'admin' %}
+    <a href="{{ url_for('plans.generate') }}" class="btn btn-primary">Generate Daily Plan</a>
+    {% endif %}
+</div>
+{% endif %}
 {% endblock %}

@@ -23,6 +23,11 @@
     </div>
 
     <div class="form-group">
+        <label for="description">Description</label>
+        <textarea id="description" name="description" rows="2">{{ item.description if item and item.description else '' }}</textarea>
+    </div>
+
+    <div class="form-group">
         <label for="unit_of_measure">Unit of Measure</label>
         <input type="text" id="unit_of_measure" name="unit_of_measure" value="{{ item.unit_of_measure if item else 'each' }}">
     </div>
@@ -31,6 +36,16 @@
         <label for="case_pack_quantity">Case Pack Quantity</label>
         <input type="number" id="case_pack_quantity" name="case_pack_quantity"
                value="{{ item.case_pack_quantity if item else 1 }}" min="1" required>
+    </div>
+
+    <div class="form-group">
+        <label for="storage_type">Storage Type</label>
+        <select id="storage_type" name="storage_type">
+            <option value="" {{ 'selected' if not item or not item.storage_type }}>— Not specified —</option>
+            <option value="dry" {{ 'selected' if item and item.storage_type == 'dry' }}>Dry</option>
+            <option value="refrigerated" {{ 'selected' if item and item.storage_type == 'refrigerated' }}>Refrigerated</option>
+            <option value="frozen" {{ 'selected' if item and item.storage_type == 'frozen' }}>Frozen</option>
+        </select>
     </div>
 
     <div class="form-group">

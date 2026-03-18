@@ -23,9 +23,10 @@
             <th>Item</th>
             <th>Par Level</th>
             <th>Safety Stock</th>
-            <th>Reorder Threshold</th>
+            <th>Reorder</th>
             <th>Min Send</th>
             <th>Rounding</th>
+            <th>Window</th>
             <th>Active</th>
             <th>Actions</th>
         </tr>
@@ -40,11 +41,12 @@
             <td>{{ s.reorder_threshold }}</td>
             <td>{{ s.min_send_quantity }}</td>
             <td>{{ s.rounding_rule }}</td>
+            <td>{{ s.usage_window_days if s.usage_window_days else 'Default' }}</td>
             <td>{{ "Yes" if s.active else "No" }}</td>
             <td><a href="{{ url_for('admin.setting_edit', setting_id=s.id) }}" class="btn btn-sm btn-secondary">Edit</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="9">No settings found.</td></tr>
+        <tr><td colspan="10">No settings found.</td></tr>
         {% endfor %}
     </tbody>
 </table>

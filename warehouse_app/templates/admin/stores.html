@@ -11,6 +11,8 @@
         <tr>
             <th>Name</th>
             <th>Code</th>
+            <th>Address</th>
+            <th>Schedule</th>
             <th>Active</th>
             <th>Actions</th>
         </tr>
@@ -20,11 +22,13 @@
         <tr>
             <td>{{ store.name }}</td>
             <td>{{ store.code }}</td>
+            <td>{{ store.address or '—' }}</td>
+            <td>{{ store.delivery_schedule or '—' }}</td>
             <td>{{ "Yes" if store.active else "No" }}</td>
             <td><a href="{{ url_for('admin.store_edit', store_id=store.id) }}" class="btn btn-sm btn-secondary">Edit</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="4">No stores found.</td></tr>
+        <tr><td colspan="6">No stores found.</td></tr>
         {% endfor %}
     </tbody>
 </table>

@@ -36,7 +36,11 @@ def store_new():
             flash(f'Store code "{code}" already exists.', 'danger')
             return render_template('admin/store_form.html', store=None)
 
-        store = Store(name=name, code=code, active=active)
+        address = request.form.get('address', '').strip() or None
+        delivery_schedule = request.form.get('delivery_schedule', '').strip() or None
+
+        store = Store(name=name, code=code, address=address,
+                      delivery_schedule=delivery_schedule, active=active)
         db.session.add(store)
         db.session.commit()
         flash(f'Store "{name}" created.', 'success')
@@ -66,6 +70,8 @@ def store_edit(store_id):
             return render_template('admin/store_form.html', store=store)
 
         store.code = code
+        store.address = request.form.get('address', '').strip() or None
+        store.delivery_schedule = request.form.get('delivery_schedule', '').strip() or None
         db.session.commit()
         flash(f'Store "{store.name}" updated.', 'success')
         return redirect(url_for('admin.stores'))
@@ -131,11 +137,16 @@ def _save_item(item):
         item = InventoryItem()
         db.session.add(item)
 
+    description = request.form.get('description', '').strip() or None
+    storage_type = request.form.get('storage_type', '').strip() or None
+
     item.item_name = name
     item.sku = sku
     item.category = category
+    item.description = description
     item.unit_of_measure = uom
     item.case_pack_quantity = cpq
+    item.storage_type = storage_type
     item.active = active
 
     db.session.commit()
@@ -211,6 +222,19 @@ def _save_setting(setting):
         flash('Invalid rounding rule.', 'danger')
         return redirect(request.url)
 
+    # Parse usage_window_days (optional override) — validate before creating object
+    usage_window_str = request.form.get('usage_window_days', '').strip()
+    usage_window_days = None
+    if usage_window_str:
+        try:
+            usage_window_days = int(usage_window_str)
+            if usage_window_days < 1 or usage_window_days > 90:
+                flash('Usage window must be between 1 and 90 days.', 'danger')
+                return redirect(request.url)
+        except ValueError:
+            flash('Usage window must be a whole number.', 'danger')
+            return redirect(request.url)
+
     # Check uniqueness
     existing = StoreItemSetting.query.filter_by(store_id=store_id, item_id=item_id).first()
     if existing and (setting is None or existing.id != setting.id):
@@ -228,6 +252,7 @@ def _save_setting(setting):
     setting.reorder_threshold = reorder_threshold
     setting.min_send_quantity = min_send_quantity
     setting.rounding_rule = rounding_rule
+    setting.usage_window_days = usage_window_days
     setting.active = active
 
     db.session.commit()

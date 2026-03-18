@@ -18,6 +18,21 @@
     </div>
 
     <div class="form-group">
+        <label for="address">Address</label>
+        <textarea id="address" name="address" rows="2">{{ store.address if store and store.address else '' }}</textarea>
+    </div>
+
+    <div class="form-group">
+        <label for="delivery_schedule">Delivery Schedule</label>
+        <select id="delivery_schedule" name="delivery_schedule">
+            <option value="daily" {{ 'selected' if store and store.delivery_schedule == 'daily' }}>Daily</option>
+            <option value="MWF" {{ 'selected' if store and store.delivery_schedule == 'MWF' }}>Mon/Wed/Fri</option>
+            <option value="TTh" {{ 'selected' if store and store.delivery_schedule == 'TTh' }}>Tue/Thu</option>
+            <option value="weekly" {{ 'selected' if store and store.delivery_schedule == 'weekly' }}>Weekly</option>
+        </select>
+    </div>
+
+    <div class="form-group">
         <label>
             <input type="checkbox" name="active" {{ 'checked' if not store or store.active }}>
             Active

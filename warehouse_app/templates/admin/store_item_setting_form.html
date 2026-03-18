@@ -60,6 +60,14 @@
     </div>
 
     <div class="form-group">
+        <label for="usage_window_days">Usage Window (days)</label>
+        <input type="number" id="usage_window_days" name="usage_window_days" min="1" max="90"
+               value="{{ setting.usage_window_days if setting and setting.usage_window_days else '' }}"
+               placeholder="Default ({{ config.get('DEFAULT_USAGE_WINDOW_SHORT', 7) }})">
+        <small style="color:#666;">Leave blank to use app default.</small>
+    </div>
+
+    <div class="form-group">
         <label>
             <input type="checkbox" name="active" {{ 'checked' if not setting or setting.active }}>
             Active

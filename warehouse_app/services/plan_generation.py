@@ -13,7 +13,7 @@ from warehouse_app.models.inventory_item import InventoryItem
 from warehouse_app.models.store_item_setting import StoreItemSetting
 from warehouse_app.models.replenishment_plan import ReplenishmentPlan
 from warehouse_app.models.replenishment_plan_line import ReplenishmentPlanLine
-from warehouse_app.services.recommendation import calculate_recommendation
+from warehouse_app.services.replenishment import calculate_recommendation
 from warehouse_app.services.audit import log_action
 
 

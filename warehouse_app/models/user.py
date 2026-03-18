@@ -19,6 +19,7 @@ class User(UserMixin, db.Model):
         default='warehouse',
     )
     active = db.Column(db.Boolean, nullable=False, default=True)
+    last_login_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
         db.DateTime,
@@ -40,6 +41,10 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+    def record_login(self):
+        """Update last_login_at timestamp."""
+        self.last_login_at = datetime.now(timezone.utc)
+
     @property
     def is_admin(self):
         return self.role == 'admin'
@@ -50,4 +55,4 @@ class User(UserMixin, db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))

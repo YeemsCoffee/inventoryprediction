@@ -5,6 +5,8 @@ Orchestrates the creation of a replenishment plan for a given date.
 """
 from datetime import datetime, timezone
 
+from flask import current_app
+
 from warehouse_app.extensions import db
 from warehouse_app.models.store import Store
 from warehouse_app.models.inventory_item import InventoryItem
@@ -100,6 +102,11 @@ def generate_plan(plan_date, user_id, regenerate=False):
             confidence_level=rec['confidence_level'],
             explanation_text=rec['explanation_text'],
             warning_flags=rec['warning_flags'],
+            # Forecast metadata
+            forecast_avg_daily_usage=rec['forecast_avg_daily_usage'],
+            forecast_on_hand=rec['forecast_on_hand'],
+            forecast_target=rec['forecast_target'],
+            forecast_window_days=rec['forecast_window_days'],
         )
         lines.append(line)
 

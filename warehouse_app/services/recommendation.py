@@ -8,6 +8,7 @@ import math
 from datetime import timedelta
 from decimal import Decimal, ROUND_CEILING
 
+from flask import current_app
 from sqlalchemy import func
 
 from warehouse_app.extensions import db
@@ -80,13 +81,19 @@ def calculate_recommendation(store_id, item_id, plan_date):
     Calculate the replenishment recommendation for one store-item pair.
 
     Returns a dict with:
-        recommended_quantity, confidence_level, explanation_text, warning_flags
+        recommended_quantity, confidence_level, explanation_text, warning_flags,
+        forecast_avg_daily_usage, forecast_on_hand, forecast_target, forecast_window_days
     """
+    # Read config values
+    window_short = current_app.config.get('DEFAULT_USAGE_WINDOW_SHORT', 7)
+    window_long = current_app.config.get('DEFAULT_USAGE_WINDOW_LONG', 14)
+    min_data_points = current_app.config.get('MIN_DATA_POINTS_HIGH_CONFIDENCE', 5)
+
     setting = StoreItemSetting.query.filter_by(
         store_id=store_id, item_id=item_id, active=True,
     ).first()
 
-    item = InventoryItem.query.get(item_id)
+    item = db.session.get(InventoryItem, item_id)
 
     # Defaults if no setting exists
     par_level = _to_decimal(setting.par_level) if setting else Decimal('0')
@@ -95,31 +102,40 @@ def calculate_recommendation(store_id, item_id, plan_date):
     rounding_rule = setting.rounding_rule if setting else 'none'
     case_pack_qty = item.case_pack_quantity if item else 1
 
+    # Per-setting override for usage window
+    effective_window_short = setting.usage_window_days if (setting and setting.usage_window_days) else window_short
+    effective_window_long = max(effective_window_short * 2, window_long)
+
     explanations = []
     warnings = []
     confidence = 'high'
 
     # ── Step 1: Get usage forecast ──────────────────────────
-    avg_7, count_7 = get_average_usage(store_id, item_id, plan_date, 7)
-    avg_14, count_14 = get_average_usage(store_id, item_id, plan_date, 14)
+    avg_short, count_short = get_average_usage(store_id, item_id, plan_date, effective_window_short)
+    avg_long, count_long = get_average_usage(store_id, item_id, plan_date, effective_window_long)
 
-    if count_7 >= 5:
-        forecast_daily = avg_7
-        explanations.append('Based on 7-day average usage')
+    forecast_window_used = effective_window_short
+
+    if count_short >= min_data_points:
+        forecast_daily = avg_short
+        explanations.append(f'Based on {effective_window_short}-day average usage')
         confidence = 'high'
-    elif count_14 >= 5:
-        forecast_daily = avg_14
-        explanations.append('Based on 14-day average usage (insufficient 7-day data)')
+    elif count_long >= min_data_points:
+        forecast_daily = avg_long
+        forecast_window_used = effective_window_long
+        explanations.append(f'Based on {effective_window_long}-day average usage (insufficient {effective_window_short}-day data)')
         confidence = 'medium'
-    elif count_7 > 0 or count_14 > 0:
+    elif count_short > 0 or count_long > 0:
         # Use whatever we have
-        forecast_daily = avg_14 if count_14 > count_7 else avg_7
+        forecast_daily = avg_long if count_long > count_short else avg_short
+        forecast_window_used = effective_window_long if count_long > count_short else effective_window_short
         explanations.append('Limited usage history available')
         confidence = 'low'
         warnings.append('sparse_usage_history')
     else:
         # No usage data at all — fall back to par level
         forecast_daily = par_level
+        forecast_window_used = 0
         explanations.append('No usage history — using par level as fallback')
         confidence = 'low'
         warnings.append('sparse_usage_history')
@@ -170,4 +186,9 @@ def calculate_recommendation(store_id, item_id, plan_date):
         'confidence_level': confidence,
         'explanation_text': '. '.join(explanations) + '.',
         'warning_flags': warnings,
+        # Forecast metadata for audit trail / transparency
+        'forecast_avg_daily_usage': forecast_daily,
+        'forecast_on_hand': on_hand,
+        'forecast_target': target,
+        'forecast_window_days': forecast_window_used,
     }

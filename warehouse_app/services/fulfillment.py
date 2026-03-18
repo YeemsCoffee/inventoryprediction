@@ -16,7 +16,7 @@ def update_line_status(line_id, new_status=None, actual_quantity=None, picker_no
 
     Returns the updated line or raises ValueError.
     """
-    line = ReplenishmentPlanLine.query.get(line_id)
+    line = db.session.get(ReplenishmentPlanLine, line_id)
     if line is None:
         raise ValueError(f'Plan line {line_id} not found')
 

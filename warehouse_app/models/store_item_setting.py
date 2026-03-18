@@ -18,6 +18,7 @@ class StoreItemSetting(db.Model):
         nullable=False,
         default='none',
     )
+    usage_window_days = db.Column(db.Integer, nullable=True)  # override app default per store-item
     active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(

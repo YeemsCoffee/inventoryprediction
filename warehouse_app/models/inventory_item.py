@@ -10,8 +10,10 @@ class InventoryItem(db.Model):
     item_name = db.Column(db.String(200), nullable=False)
     sku = db.Column(db.String(100), nullable=False, unique=True, index=True)
     category = db.Column(db.String(100), nullable=False, default='')
+    description = db.Column(db.Text, nullable=True)
     unit_of_measure = db.Column(db.String(50), nullable=False, default='each')
     case_pack_quantity = db.Column(db.Integer, nullable=False, default=1)
+    storage_type = db.Column(db.String(50), nullable=True)  # e.g. 'refrigerated', 'dry', 'frozen'
     active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(

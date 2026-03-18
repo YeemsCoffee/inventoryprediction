@@ -7,14 +7,21 @@ import csv
 import io
 from datetime import date, datetime
 
+from flask import current_app
+
 from warehouse_app.extensions import db
 from warehouse_app.models.store import Store
 from warehouse_app.models.inventory_item import InventoryItem
 from warehouse_app.models.daily_usage import DailyUsage
 from warehouse_app.models.inventory_snapshot import InventorySnapshot
 
-MAX_ROWS = 10000
-MAX_QUANTITY = 999999
+
+def _get_limit(key, fallback):
+    """Read a config value, falling back if outside app context."""
+    try:
+        return current_app.config.get(key, fallback)
+    except RuntimeError:
+        return fallback
 
 
 def _parse_date(value):
@@ -55,6 +62,10 @@ def import_daily_usage_csv(file_content, source='csv_import'):
 
     Returns dict with imported, skipped, errors.
     """
+    max_rows = _get_limit('CSV_MAX_ROWS', 10000)
+    max_quantity = _get_limit('CSV_MAX_QUANTITY', 999999)
+    max_note_len = _get_limit('CSV_MAX_NOTE_LENGTH', 500)
+
     store_map = _get_store_map()
     item_map = _get_item_map()
 
@@ -73,8 +84,8 @@ def import_daily_usage_csv(file_content, source='csv_import'):
     errors = []
 
     for i, row in enumerate(reader, start=2):  # line 2 = first data row
-        if i - 1 > MAX_ROWS:
-            errors.append(f'Row limit of {MAX_ROWS} exceeded. Remaining rows skipped.')
+        if i - 1 > max_rows:
+            errors.append(f'Row limit of {max_rows} exceeded. Remaining rows skipped.')
             break
 
         try:
@@ -116,7 +127,7 @@ def import_daily_usage_csv(file_content, source='csv_import'):
                 quantity = float(qty_str)
                 if quantity < 0:
                     raise ValueError('negative')
-                if quantity > MAX_QUANTITY:
+                if quantity > max_quantity:
                     raise ValueError('too large')
             except (ValueError, TypeError):
                 errors.append(f'Row {i}: Invalid quantity "{qty_str}"')
@@ -124,8 +135,8 @@ def import_daily_usage_csv(file_content, source='csv_import'):
                 continue
 
             # Truncate notes
-            if notes and len(notes) > 500:
-                notes = notes[:500]
+            if notes and len(notes) > max_note_len:
+                notes = notes[:max_note_len]
 
             # Upsert: update if exists, insert if not
             existing = DailyUsage.query.filter_by(
@@ -160,6 +171,10 @@ def import_inventory_snapshot_csv(file_content, source='csv_import'):
 
     Returns dict with imported, skipped, errors.
     """
+    max_rows = _get_limit('CSV_MAX_ROWS', 10000)
+    max_quantity = _get_limit('CSV_MAX_QUANTITY', 999999)
+    max_note_len = _get_limit('CSV_MAX_NOTE_LENGTH', 500)
+
     store_map = _get_store_map()
     item_map = _get_item_map()
 
@@ -178,8 +193,8 @@ def import_inventory_snapshot_csv(file_content, source='csv_import'):
     errors = []
 
     for i, row in enumerate(reader, start=2):
-        if i - 1 > MAX_ROWS:
-            errors.append(f'Row limit of {MAX_ROWS} exceeded. Remaining rows skipped.')
+        if i - 1 > max_rows:
+            errors.append(f'Row limit of {max_rows} exceeded. Remaining rows skipped.')
             break
 
         try:
@@ -217,15 +232,15 @@ def import_inventory_snapshot_csv(file_content, source='csv_import'):
                 quantity = float(qty_str)
                 if quantity < 0:
                     raise ValueError('negative')
-                if quantity > MAX_QUANTITY:
+                if quantity > max_quantity:
                     raise ValueError('too large')
             except (ValueError, TypeError):
                 errors.append(f'Row {i}: Invalid quantity "{qty_str}"')
                 skipped += 1
                 continue
 
-            if notes and len(notes) > 500:
-                notes = notes[:500]
+            if notes and len(notes) > max_note_len:
+                notes = notes[:max_note_len]
 
             existing = InventorySnapshot.query.filter_by(
                 store_id=store_id, item_id=item_id, snapshot_date=snapshot_date,

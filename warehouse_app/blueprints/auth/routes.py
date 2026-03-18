@@ -19,6 +19,8 @@ def login():
         user = User.query.filter_by(email=email).first()
         if user and user.active and check_password_hash(user.password_hash, password):
             login_user(user)
+            user.record_login()
+            db.session.commit()
             next_page = request.args.get('next')
             return redirect(next_page or url_for('dashboard.index'))
 

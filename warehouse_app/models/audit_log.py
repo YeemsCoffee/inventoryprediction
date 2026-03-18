@@ -12,8 +12,16 @@ class AuditLog(db.Model):
     action = db.Column(db.String(50), nullable=False)
     old_value = db.Column(db.Text, nullable=True)
     new_value = db.Column(db.Text, nullable=True)
-    changed_by_user_id = db.Column(db.Integer, nullable=True)
+    changed_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
     changed_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    # Relationship
+    changed_by_user = db.relationship('User', foreign_keys=[changed_by_user_id])
 
     def __repr__(self):
         return f'<AuditLog {self.entity_type}#{self.entity_id} {self.action}>'

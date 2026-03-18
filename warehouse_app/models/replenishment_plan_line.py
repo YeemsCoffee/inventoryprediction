@@ -26,6 +26,13 @@ class ReplenishmentPlanLine(db.Model):
     warning_flags = db.Column(db.JSON, nullable=False, default=list)
     picker_note = db.Column(db.Text, nullable=True)
     last_status_change_at = db.Column(db.DateTime, nullable=True)
+
+    # ── Forecast metadata (captures inputs used for recommendation) ───
+    forecast_avg_daily_usage = db.Column(db.Numeric(10, 4), nullable=True)
+    forecast_on_hand = db.Column(db.Numeric(10, 2), nullable=True)
+    forecast_target = db.Column(db.Numeric(10, 2), nullable=True)
+    forecast_window_days = db.Column(db.Integer, nullable=True)
+
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
         db.DateTime,

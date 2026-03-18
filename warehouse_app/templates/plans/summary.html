@@ -1,6 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Plan Summary - Warehouse Replenishment{% endblock %}
 {% block content %}
-<h1>Plan Summary</h1>
-<p>Phase 3 implementation pending.</p>
+<h1>Plan Generated</h1>
+
+<div style="background:#fff; padding:1.5rem; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); max-width:500px; margin-bottom:1.5rem;">
+    <table style="box-shadow:none;">
+        <tr><td style="font-weight:600;">Plan Date</td><td>{{ plan.plan_date }}</td></tr>
+        <tr><td style="font-weight:600;">Status</td><td><span class="badge badge-{{ plan.status }}">{{ plan.status }}</span></td></tr>
+        <tr><td style="font-weight:600;">Stores Included</td><td>{{ total_stores }}</td></tr>
+        <tr><td style="font-weight:600;">Total Line Items</td><td>{{ total_lines }}</td></tr>
+        <tr><td style="font-weight:600;">Low Confidence Lines</td><td>{{ low_confidence }}</td></tr>
+        <tr><td style="font-weight:600;">Lines with Warnings</td><td>{{ warnings }}</td></tr>
+    </table>
+</div>
+
+<a href="{{ url_for('warehouse.master_pick_list', plan_date=plan.plan_date) }}" class="btn btn-primary">View Master Pick List</a>
+<a href="{{ url_for('dashboard.index') }}" class="btn btn-secondary">Back to Dashboard</a>
 {% endblock %}

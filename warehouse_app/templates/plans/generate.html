@@ -2,5 +2,22 @@
 {% block title %}Generate Plan - Warehouse Replenishment{% endblock %}
 {% block content %}
 <h1>Generate Daily Plan</h1>
-<p>Phase 3 implementation pending.</p>
+
+<form method="POST" style="max-width:500px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form-group">
+        <label for="plan_date">Plan Date (Delivery Date)</label>
+        <input type="date" id="plan_date" name="plan_date" required>
+    </div>
+
+    <div class="form-group">
+        <label>
+            <input type="checkbox" name="regenerate">
+            Regenerate existing draft plan (will replace current draft)
+        </label>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Generate Plan</button>
+</form>
 {% endblock %}

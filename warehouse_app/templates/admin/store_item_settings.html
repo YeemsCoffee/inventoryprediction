@@ -1,6 +1,51 @@
 {% extends "base.html" %}
 {% block title %}Store Item Settings - Warehouse Replenishment{% endblock %}
 {% block content %}
-<h1>Store Item Settings</h1>
-<p>Phase 3 implementation pending.</p>
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+    <h1>Store Item Settings</h1>
+    <a href="{{ url_for('admin.setting_new') }}" class="btn btn-primary">+ New Setting</a>
+</div>
+
+<form method="GET" style="margin-bottom:1rem;">
+    <label for="store_id" style="font-weight:600;">Filter by store:</label>
+    <select name="store_id" id="store_id" onchange="this.form.submit()">
+        <option value="">All Stores</option>
+        {% for store in stores %}
+        <option value="{{ store.id }}" {{ 'selected' if selected_store_id == store.id }}>{{ store.name }}</option>
+        {% endfor %}
+    </select>
+</form>
+
+<table>
+    <thead>
+        <tr>
+            <th>Store</th>
+            <th>Item</th>
+            <th>Par Level</th>
+            <th>Safety Stock</th>
+            <th>Reorder Threshold</th>
+            <th>Min Send</th>
+            <th>Rounding</th>
+            <th>Active</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in settings %}
+        <tr>
+            <td>{{ s.store.name }}</td>
+            <td>{{ s.item.item_name }} ({{ s.item.sku }})</td>
+            <td>{{ s.par_level }}</td>
+            <td>{{ s.safety_stock }}</td>
+            <td>{{ s.reorder_threshold }}</td>
+            <td>{{ s.min_send_quantity }}</td>
+            <td>{{ s.rounding_rule }}</td>
+            <td>{{ "Yes" if s.active else "No" }}</td>
+            <td><a href="{{ url_for('admin.setting_edit', setting_id=s.id) }}" class="btn btn-sm btn-secondary">Edit</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9">No settings found.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
 {% endblock %}

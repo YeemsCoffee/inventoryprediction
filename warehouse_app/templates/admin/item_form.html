@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if item else "New" }} Item - Warehouse Replenishment{% endblock %}
+{% block content %}
+<h1>{{ "Edit" if item else "New" }} Inventory Item</h1>
+
+<form method="POST" style="max-width:500px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form-group">
+        <label for="item_name">Item Name</label>
+        <input type="text" id="item_name" name="item_name" value="{{ item.item_name if item else '' }}" required>
+    </div>
+
+    <div class="form-group">
+        <label for="sku">SKU</label>
+        <input type="text" id="sku" name="sku" value="{{ item.sku if item else '' }}" required
+               style="text-transform:uppercase;">
+    </div>
+
+    <div class="form-group">
+        <label for="category">Category</label>
+        <input type="text" id="category" name="category" value="{{ item.category if item else '' }}">
+    </div>
+
+    <div class="form-group">
+        <label for="unit_of_measure">Unit of Measure</label>
+        <input type="text" id="unit_of_measure" name="unit_of_measure" value="{{ item.unit_of_measure if item else 'each' }}">
+    </div>
+
+    <div class="form-group">
+        <label for="case_pack_quantity">Case Pack Quantity</label>
+        <input type="number" id="case_pack_quantity" name="case_pack_quantity"
+               value="{{ item.case_pack_quantity if item else 1 }}" min="1" required>
+    </div>
+
+    <div class="form-group">
+        <label>
+            <input type="checkbox" name="active" {{ 'checked' if not item or item.active }}>
+            Active
+        </label>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a href="{{ url_for('admin.items') }}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

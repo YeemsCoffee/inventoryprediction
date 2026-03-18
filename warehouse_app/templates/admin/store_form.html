@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if store else "New" }} Store - Warehouse Replenishment{% endblock %}
+{% block content %}
+<h1>{{ "Edit" if store else "New" }} Store</h1>
+
+<form method="POST" style="max-width:500px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form-group">
+        <label for="name">Store Name</label>
+        <input type="text" id="name" name="name" value="{{ store.name if store else '' }}" required>
+    </div>
+
+    <div class="form-group">
+        <label for="code">Store Code</label>
+        <input type="text" id="code" name="code" value="{{ store.code if store else '' }}" required
+               style="text-transform:uppercase;">
+    </div>
+
+    <div class="form-group">
+        <label>
+            <input type="checkbox" name="active" {{ 'checked' if not store or store.active }}>
+            Active
+        </label>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a href="{{ url_for('admin.stores') }}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

@@ -11,6 +11,9 @@
         <tr><td style="font-weight:600;">Total Line Items</td><td>{{ total_lines }}</td></tr>
         <tr><td style="font-weight:600;">Low Confidence Lines</td><td>{{ low_confidence }}</td></tr>
         <tr><td style="font-weight:600;">Lines with Warnings</td><td>{{ warnings }}</td></tr>
+        {% if zero_qty_skipped %}
+        <tr><td style="font-weight:600;">Zero-Qty Pairs Skipped</td><td>{{ zero_qty_skipped }}</td></tr>
+        {% endif %}
     </table>
 </div>
 

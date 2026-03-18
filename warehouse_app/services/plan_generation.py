@@ -12,6 +12,7 @@ from warehouse_app.models.store_item_setting import StoreItemSetting
 from warehouse_app.models.replenishment_plan import ReplenishmentPlan
 from warehouse_app.models.replenishment_plan_line import ReplenishmentPlanLine
 from warehouse_app.services.recommendation import calculate_recommendation
+from warehouse_app.services.audit import log_action
 
 
 def generate_plan(plan_date, user_id, regenerate=False):
@@ -42,10 +43,21 @@ def generate_plan(plan_date, user_id, regenerate=False):
                 f'Cannot regenerate a plan with status "{existing.status}". '
                 'Only draft plans can be regenerated.'
             )
+        # Log the regeneration before deleting
+        log_action('plan', existing.id, 'regenerate',
+                   old_value=f'plan_date={plan_date}, lines={existing.lines.count()}')
         # Delete existing draft lines and plan
         ReplenishmentPlanLine.query.filter_by(plan_id=existing.id).delete()
         db.session.delete(existing)
         db.session.flush()
+
+    # Verify there are active settings to generate from
+    active_settings = StoreItemSetting.query.filter_by(active=True).all()
+    if not active_settings:
+        raise ValueError(
+            'No active store-item settings found. '
+            'Create settings in Admin > Store Item Settings before generating a plan.'
+        )
 
     # Create new plan
     plan = ReplenishmentPlan(
@@ -57,13 +69,6 @@ def generate_plan(plan_date, user_id, regenerate=False):
     db.session.add(plan)
     db.session.flush()
 
-    # Get all active store-item settings
-    active_settings = StoreItemSetting.query.filter_by(active=True).all()
-
-    # Also track active stores and items for combinations without explicit settings
-    active_stores = Store.query.filter_by(active=True).all()
-    active_items = InventoryItem.query.filter_by(active=True).all()
-
     # Build set of (store_id, item_id) with settings
     settings_pairs = {(s.store_id, s.item_id) for s in active_settings}
 
@@ -74,10 +79,16 @@ def generate_plan(plan_date, user_id, regenerate=False):
         'low_confidence': 0,
         'warnings': 0,
         'stores': set(),
+        'zero_qty_skipped': 0,
     }
 
     for store_id, item_id in settings_pairs:
         rec = calculate_recommendation(store_id, item_id, plan_date)
+
+        # Skip lines with zero recommended quantity to keep plans clean
+        if rec['recommended_quantity'] <= 0:
+            stats['zero_qty_skipped'] += 1
+            continue
 
         line = ReplenishmentPlanLine(
             plan_id=plan.id,
@@ -100,6 +111,13 @@ def generate_plan(plan_date, user_id, regenerate=False):
             stats['warnings'] += 1
 
     db.session.add_all(lines)
+
+    log_action('plan', plan.id, 'generate',
+               new_value=f'plan_date={plan_date}, lines={stats["total_lines"]}, '
+                         f'stores={len(stats["stores"])}, '
+                         f'low_confidence={stats["low_confidence"]}, '
+                         f'warnings={stats["warnings"]}')
+
     db.session.commit()
 
     return {
@@ -108,4 +126,5 @@ def generate_plan(plan_date, user_id, regenerate=False):
         'total_stores': len(stats['stores']),
         'low_confidence': stats['low_confidence'],
         'warnings': stats['warnings'],
+        'zero_qty_skipped': stats['zero_qty_skipped'],
     }

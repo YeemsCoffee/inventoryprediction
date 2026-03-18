@@ -16,34 +16,43 @@
 {% elif lines|length == 0 %}
 <p style="color:#666;">No items for {{ store.name }} on {{ plan_date }}.</p>
 {% else %}
-<div style="font-size:0.85rem; color:#666; margin-bottom:0.75rem;">
-    <strong>{{ plan_date }}</strong> &middot; <span class="badge badge-{{ plan.status }}">{{ plan.status }}</span> &middot; {{ lines|length }} items
+<div style="display:flex; gap:1rem; margin-bottom:0.75rem; flex-wrap:wrap; align-items:center;">
+    <div style="font-size:0.85rem; color:#666;">
+        <strong>{{ plan_date }}</strong> &middot; <span class="badge badge-{{ plan.status }}">{{ plan.status }}</span> &middot; {{ lines|length }} items
+    </div>
+    <div id="progress-bar" style="display:flex; gap:0.25rem; font-size:0.8rem;">
+        {% for status in ['pending', 'picked', 'loaded', 'delivered', 'shorted'] %}
+        {% if progress.get(status, 0) > 0 %}
+        <span class="badge badge-{{ status }}">{{ progress[status] }} {{ status }}</span>
+        {% endif %}
+        {% endfor %}
+    </div>
 </div>
 
-<div class="no-print" style="margin-bottom:1rem; display:flex; gap:0.5rem;">
-    <button class="btn btn-sm btn-primary" onclick="bulkAction('picked')">Mark All Picked</button>
-    <button class="btn btn-sm btn-success" onclick="bulkAction('loaded')">Mark All Loaded</button>
-    <button class="btn btn-sm btn-success" onclick="bulkAction('delivered')">Mark All Delivered</button>
+<div class="no-print" style="margin-bottom:1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+    <button class="btn btn-sm btn-primary" onclick="bulkAction('picked')">Mark Selected Picked</button>
+    <button class="btn btn-sm btn-success" onclick="bulkAction('loaded')">Mark Selected Loaded</button>
+    <button class="btn btn-sm btn-success" onclick="bulkAction('delivered')">Mark Selected Delivered</button>
 </div>
 
 <table id="delivery-table">
     <thead>
         <tr>
-            <th class="no-print"><input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"></th>
+            <th class="no-print" style="width:30px;"><input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"></th>
             <th>Item</th>
             <th>SKU</th>
             <th style="text-align:right;">Rec. Qty</th>
             <th style="text-align:right;" class="no-print">Actual Qty</th>
-            <th>Status</th>
-            <th>Confidence</th>
+            <th style="width:90px;">Status</th>
+            <th style="width:60px;">Conf.</th>
             <th class="no-print">Note</th>
-            <th class="no-print">Actions</th>
+            <th class="no-print" style="width:180px;">Actions</th>
             <th>Warnings</th>
         </tr>
     </thead>
     <tbody>
         {% for line in lines %}
-        <tr id="line-{{ line.id }}" data-line-id="{{ line.id }}">
+        <tr id="line-{{ line.id }}" data-line-id="{{ line.id }}" class="line-row line-{{ line.status }}">
             <td class="no-print"><input type="checkbox" class="line-checkbox" value="{{ line.id }}"></td>
             <td><strong>{{ line.item.item_name }}</strong></td>
             <td>{{ line.item.sku }}</td>
@@ -64,14 +73,14 @@
                 <input type="text" class="note-input" data-line-id="{{ line.id }}"
                        value="{{ line.picker_note or '' }}"
                        placeholder="Add note..." style="width:120px; padding:0.2rem 0.4rem; font-size:0.85rem;"
-                       onchange="updateNote(this)">
+                       onchange="updateNote(this)" maxlength="500">
             </td>
             <td class="no-print">
                 <div style="display:flex; gap:0.25rem; flex-wrap:wrap;">
-                    <button class="btn btn-sm btn-primary" onclick="setStatus({{ line.id }}, 'picked')">Pick</button>
-                    <button class="btn btn-sm btn-success" onclick="setStatus({{ line.id }}, 'loaded')">Load</button>
-                    <button class="btn btn-sm btn-success" onclick="setStatus({{ line.id }}, 'delivered')">Dlvr</button>
-                    <button class="btn btn-sm btn-danger" onclick="setStatus({{ line.id }}, 'shorted')">Short</button>
+                    <button class="btn btn-sm btn-primary status-btn" data-line="{{ line.id }}" data-status="picked" onclick="setStatus({{ line.id }}, 'picked', this)">Pick</button>
+                    <button class="btn btn-sm btn-success status-btn" data-line="{{ line.id }}" data-status="loaded" onclick="setStatus({{ line.id }}, 'loaded', this)">Load</button>
+                    <button class="btn btn-sm btn-success status-btn" data-line="{{ line.id }}" data-status="delivered" onclick="setStatus({{ line.id }}, 'delivered', this)">Dlvr</button>
+                    <button class="btn btn-sm btn-danger status-btn" data-line="{{ line.id }}" data-status="shorted" onclick="setStatus({{ line.id }}, 'shorted', this)">Short</button>
                 </div>
             </td>
             <td>
@@ -82,14 +91,13 @@
                 {% endif %}
             </td>
         </tr>
-        {% if line.explanation_text %}
-        <tr class="print-only" style="display:none;">
-            <td colspan="10" style="padding:0.2rem 1rem; font-size:0.8rem; color:#666; border-bottom:1px solid #ddd;">{{ line.explanation_text }}</td>
-        </tr>
-        {% endif %}
         {% endfor %}
     </tbody>
 </table>
+
+<div class="print-only" style="display:none; margin-top:1rem; font-size:0.8rem; color:#999;">
+    Printed {{ plan_date }} &middot; {{ store.name }} &middot; {{ lines|length }} items
+</div>
 {% endif %}
 {% endblock %}
 
@@ -97,78 +105,145 @@
 <script>
 const STORE_ID = {{ store.id }};
 
-function setStatus(lineId, status) {
+// Track status counts for live progress bar
+var statusCounts = {{ progress | tojson }};
+
+function updateProgressBar() {
+    var bar = document.getElementById('progress-bar');
+    if (!bar) return;
+    var html = '';
+    var order = ['pending', 'picked', 'loaded', 'delivered', 'shorted'];
+    for (var i = 0; i < order.length; i++) {
+        var s = order[i];
+        var c = statusCounts[s] || 0;
+        if (c > 0) html += '<span class="badge badge-' + s + '">' + c + ' ' + s + '</span>';
+    }
+    bar.innerHTML = html;
+}
+
+function flashRow(lineId, ok) {
+    var row = document.getElementById('line-' + lineId);
+    if (!row) return;
+    row.style.transition = 'background 0.3s';
+    row.style.background = ok ? '#d4edda' : '#f8d7da';
+    setTimeout(function() { row.style.background = ''; }, 800);
+}
+
+function setStatus(lineId, status, btn) {
+    if (btn) btn.disabled = true;
     fetch('/warehouse/api/update-line', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({line_id: lineId, status: status})
     })
-    .then(r => r.json())
-    .then(data => {
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (btn) btn.disabled = false;
         if (data.success) {
-            const badge = document.getElementById('status-badge-' + lineId);
+            var badge = document.getElementById('status-badge-' + lineId);
+            var oldStatus = badge.textContent.trim();
             badge.textContent = data.status;
             badge.className = 'badge badge-' + data.status;
+            // Update counts
+            if (statusCounts[oldStatus]) statusCounts[oldStatus]--;
+            statusCounts[data.status] = (statusCounts[data.status] || 0) + 1;
+            updateProgressBar();
+            flashRow(lineId, true);
         } else {
+            flashRow(lineId, false);
             alert('Error: ' + (data.error || 'Unknown error'));
         }
     })
-    .catch(err => alert('Network error: ' + err));
+    .catch(function(err) {
+        if (btn) btn.disabled = false;
+        flashRow(lineId, false);
+        alert('Network error: ' + err);
+    });
 }
 
 function updateActualQty(input) {
-    const lineId = input.dataset.lineId;
-    const val = input.value;
+    var lineId = input.dataset.lineId;
+    var val = input.value;
+    input.style.borderColor = '#ccc';
     fetch('/warehouse/api/update-line', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({line_id: parseInt(lineId), actual_quantity: val ? parseFloat(val) : null, status: null})
     })
-    .then(r => r.json())
-    .then(data => {
-        if (!data.success) alert('Error: ' + (data.error || 'Unknown error'));
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            input.style.borderColor = '#28a745';
+            setTimeout(function() { input.style.borderColor = '#ccc'; }, 1500);
+        } else {
+            input.style.borderColor = '#dc3545';
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
     })
-    .catch(err => alert('Network error: ' + err));
+    .catch(function(err) {
+        input.style.borderColor = '#dc3545';
+        alert('Network error: ' + err);
+    });
 }
 
 function updateNote(input) {
-    const lineId = input.dataset.lineId;
+    var lineId = input.dataset.lineId;
+    input.style.borderColor = '#ccc';
     fetch('/warehouse/api/update-line', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({line_id: parseInt(lineId), picker_note: input.value, status: null})
     })
-    .then(r => r.json())
-    .then(data => {
-        if (!data.success) alert('Error: ' + (data.error || 'Unknown error'));
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            input.style.borderColor = '#28a745';
+            setTimeout(function() { input.style.borderColor = '#ccc'; }, 1500);
+        } else {
+            input.style.borderColor = '#dc3545';
+        }
     })
-    .catch(err => alert('Network error: ' + err));
+    .catch(function(err) {
+        input.style.borderColor = '#dc3545';
+    });
 }
 
 function toggleSelectAll(checkbox) {
-    document.querySelectorAll('.line-checkbox').forEach(cb => cb.checked = checkbox.checked);
+    document.querySelectorAll('.line-checkbox').forEach(function(cb) { cb.checked = checkbox.checked; });
 }
 
 function bulkAction(status) {
-    const ids = Array.from(document.querySelectorAll('.line-checkbox:checked')).map(cb => parseInt(cb.value));
+    var ids = Array.from(document.querySelectorAll('.line-checkbox:checked')).map(function(cb) { return parseInt(cb.value); });
     if (ids.length === 0) { alert('Select lines first.'); return; }
+    if (!confirm('Update ' + ids.length + ' lines to "' + status + '"?')) return;
     fetch('/warehouse/api/bulk-update', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({line_ids: ids, status: status})
     })
-    .then(r => r.json())
-    .then(data => {
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
         if (data.success) {
-            ids.forEach(id => {
-                const badge = document.getElementById('status-badge-' + id);
-                if (badge) { badge.textContent = status; badge.className = 'badge badge-' + status; }
+            ids.forEach(function(id) {
+                var badge = document.getElementById('status-badge-' + id);
+                if (badge) {
+                    var old = badge.textContent.trim();
+                    if (statusCounts[old]) statusCounts[old]--;
+                    badge.textContent = status;
+                    badge.className = 'badge badge-' + status;
+                    statusCounts[status] = (statusCounts[status] || 0) + 1;
+                    flashRow(id, true);
+                }
             });
+            updateProgressBar();
+            // Uncheck all
+            document.querySelectorAll('.line-checkbox').forEach(function(cb) { cb.checked = false; });
+            document.getElementById('select-all').checked = false;
         } else {
             alert('Error: ' + (data.error || 'Unknown error'));
         }
     })
-    .catch(err => alert('Network error: ' + err));
+    .catch(function(err) { alert('Network error: ' + err); });
 }
 </script>
 {% endblock %}

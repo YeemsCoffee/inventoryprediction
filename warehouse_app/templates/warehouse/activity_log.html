@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Activity Log - Warehouse Replenishment{% endblock %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
+    <h1>Activity Log</h1>
+    <form method="GET" style="display:flex; align-items:center; gap:0.5rem;" class="no-print">
+        <input type="date" name="plan_date" value="{{ plan_date }}" onchange="this.form.submit()">
+    </form>
+</div>
+
+{% if not plan %}
+<p style="color:#666;">No plan found for {{ plan_date }}.</p>
+{% elif entries|length == 0 %}
+<p style="color:#666;">No activity recorded for this plan yet.</p>
+{% else %}
+<div style="font-size:0.85rem; color:#666; margin-bottom:0.75rem;">
+    <strong>{{ plan_date }}</strong> &middot; {{ entries|length }} entries (most recent first)
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th style="width:160px;">Time (UTC)</th>
+            <th>Action</th>
+            <th>Line ID</th>
+            <th>Detail</th>
+            <th>User</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in entries %}
+        <tr>
+            <td style="font-size:0.85rem; white-space:nowrap;">{{ entry.changed_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td><span class="badge badge-{{ 'picked' if entry.action == 'update' else 'loaded' if entry.action == 'bulk_update' else 'pending' }}">{{ entry.action }}</span></td>
+            <td>{{ entry.entity_id }}</td>
+            <td style="font-size:0.85rem;">{{ entry.new_value or entry.old_value or '' }}</td>
+            <td>{% if entry.user %}{{ entry.user.full_name }}{% else %}System{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

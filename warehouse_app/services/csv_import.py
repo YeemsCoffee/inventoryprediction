@@ -13,6 +13,9 @@ from warehouse_app.models.inventory_item import InventoryItem
 from warehouse_app.models.daily_usage import DailyUsage
 from warehouse_app.models.inventory_snapshot import InventorySnapshot
 
+MAX_ROWS = 10000
+MAX_QUANTITY = 999999
+
 
 def _parse_date(value):
     """Parse a date from common formats."""
@@ -36,6 +39,14 @@ def _get_item_map():
     return {i.sku.upper(): i.id for i in items}
 
 
+def _validate_csv_headers(reader, required_fields):
+    """Check that required headers are present. Returns list of missing fields."""
+    if reader.fieldnames is None:
+        return required_fields
+    actual = {f.strip().lower() for f in reader.fieldnames}
+    return [f for f in required_fields if f not in actual]
+
+
 def import_daily_usage_csv(file_content, source='csv_import'):
     """
     Import daily usage from CSV content.
@@ -48,11 +59,24 @@ def import_daily_usage_csv(file_content, source='csv_import'):
     item_map = _get_item_map()
 
     reader = csv.DictReader(io.StringIO(file_content))
+
+    # Validate headers
+    missing = _validate_csv_headers(reader, ['store_code', 'sku', 'usage_date', 'quantity_used'])
+    if missing:
+        return {
+            'imported': 0, 'skipped': 0,
+            'errors': [f'Missing required columns: {", ".join(missing)}'],
+        }
+
     imported = 0
     skipped = 0
     errors = []
 
     for i, row in enumerate(reader, start=2):  # line 2 = first data row
+        if i - 1 > MAX_ROWS:
+            errors.append(f'Row limit of {MAX_ROWS} exceeded. Remaining rows skipped.')
+            break
+
         try:
             store_code = row.get('store_code', '').strip().upper()
             sku = row.get('sku', '').strip().upper()
@@ -81,15 +105,27 @@ def import_daily_usage_csv(file_content, source='csv_import'):
                 skipped += 1
                 continue
 
+            # Reject future dates
+            if usage_date > date.today():
+                errors.append(f'Row {i}: Future date "{date_str}" not allowed')
+                skipped += 1
+                continue
+
             # Validate quantity
             try:
                 quantity = float(qty_str)
                 if quantity < 0:
-                    raise ValueError
+                    raise ValueError('negative')
+                if quantity > MAX_QUANTITY:
+                    raise ValueError('too large')
             except (ValueError, TypeError):
                 errors.append(f'Row {i}: Invalid quantity "{qty_str}"')
                 skipped += 1
                 continue
+
+            # Truncate notes
+            if notes and len(notes) > 500:
+                notes = notes[:500]
 
             # Upsert: update if exists, insert if not
             existing = DailyUsage.query.filter_by(
@@ -128,11 +164,24 @@ def import_inventory_snapshot_csv(file_content, source='csv_import'):
     item_map = _get_item_map()
 
     reader = csv.DictReader(io.StringIO(file_content))
+
+    # Validate headers
+    missing = _validate_csv_headers(reader, ['store_code', 'sku', 'snapshot_date', 'quantity_on_hand'])
+    if missing:
+        return {
+            'imported': 0, 'skipped': 0,
+            'errors': [f'Missing required columns: {", ".join(missing)}'],
+        }
+
     imported = 0
     skipped = 0
     errors = []
 
     for i, row in enumerate(reader, start=2):
+        if i - 1 > MAX_ROWS:
+            errors.append(f'Row limit of {MAX_ROWS} exceeded. Remaining rows skipped.')
+            break
+
         try:
             store_code = row.get('store_code', '').strip().upper()
             sku = row.get('sku', '').strip().upper()
@@ -158,14 +207,25 @@ def import_inventory_snapshot_csv(file_content, source='csv_import'):
                 skipped += 1
                 continue
 
+            # Reject future dates
+            if snapshot_date > date.today():
+                errors.append(f'Row {i}: Future date "{date_str}" not allowed')
+                skipped += 1
+                continue
+
             try:
                 quantity = float(qty_str)
                 if quantity < 0:
-                    raise ValueError
+                    raise ValueError('negative')
+                if quantity > MAX_QUANTITY:
+                    raise ValueError('too large')
             except (ValueError, TypeError):
                 errors.append(f'Row {i}: Invalid quantity "{qty_str}"')
                 skipped += 1
                 continue
+
+            if notes and len(notes) > 500:
+                notes = notes[:500]
 
             existing = InventorySnapshot.query.filter_by(
                 store_id=store_id, item_id=item_id, snapshot_date=snapshot_date,

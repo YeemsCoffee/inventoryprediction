@@ -3,6 +3,22 @@
 {% block content %}
 <h1>Generate Daily Plan</h1>
 
+{% if confirm_regenerate %}
+<div class="alert alert-warning">
+    A draft plan already exists for <strong>{{ plan_date }}</strong>.
+    Regenerating will delete all current lines and create fresh recommendations.
+</div>
+<form method="POST" style="max-width:500px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="plan_date" value="{{ plan_date }}">
+    <input type="hidden" name="regenerate" value="on">
+    <input type="hidden" name="confirmed" value="yes">
+    <div style="display:flex; gap:0.75rem;">
+        <button type="submit" class="btn btn-danger">Confirm Regenerate</button>
+        <a href="{{ url_for('plans.generate') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+{% else %}
 <form method="POST" style="max-width:500px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -20,4 +36,5 @@
 
     <button type="submit" class="btn btn-primary">Generate Plan</button>
 </form>
+{% endif %}
 {% endblock %}

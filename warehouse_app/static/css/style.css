@@ -112,6 +112,11 @@ body {
     color: #fff;
 }
 
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .btn-primary { background: #4a90d9; }
 .btn-primary:hover { background: #3a7bc8; }
 .btn-success { background: #28a745; }
@@ -146,6 +151,9 @@ th {
     font-size: 0.85rem;
     text-transform: uppercase;
     color: #555;
+    position: sticky;
+    top: 0;
+    z-index: 1;
 }
 
 tr:hover {
@@ -211,16 +219,34 @@ tr:hover {
     margin-bottom: 1.5rem;
 }
 
+/* Delivery sheet row status tinting (subtle left border) */
+.line-row { transition: background 0.3s ease; }
+.line-delivered { border-left: 3px solid #28a745; }
+.line-shorted { border-left: 3px solid #dc3545; }
+.line-picked { border-left: 3px solid #4a90d9; }
+.line-loaded { border-left: 3px solid #155724; }
+.line-pending { border-left: 3px solid #ffc107; }
+
+/* Inline input save feedback */
+.actual-qty-input, .note-input {
+    transition: border-color 0.3s ease;
+}
+
 /* Print styles */
 @media print {
     .navbar, .no-print { display: none !important; }
-    .print-only { display: table-row !important; }
+    .print-only { display: block !important; }
     body { background: #fff; font-size: 11px; }
-    .container { max-width: 100%; margin: 0; padding: 0; }
-    table { box-shadow: none; font-size: 11px; }
-    th { background: #eee !important; }
+    .container { max-width: 100%; margin: 0; padding: 0.5cm; }
+    h1 { font-size: 16px; margin-bottom: 0.5rem; }
+    table { box-shadow: none; font-size: 10px; page-break-inside: auto; }
+    tr { page-break-inside: avoid; }
+    th { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .stat-card { box-shadow: none; border: 1px solid #ddd; }
-    td, th { padding: 0.3rem 0.5rem; }
+    td, th { padding: 0.2rem 0.4rem; }
+    .badge { font-size: 0.6rem; padding: 0.1rem 0.3rem; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .line-delivered { border-left: 2px solid #28a745; }
+    .line-shorted { border-left: 2px solid #dc3545; }
 }
 
 /* Breakdown rows */
@@ -239,9 +265,11 @@ tr:hover {
 
 /* Tablet-friendly touch targets */
 @media (max-width: 1024px) {
-    .btn { padding: 0.6rem 1rem; }
-    .btn-sm { padding: 0.4rem 0.75rem; font-size: 0.85rem; }
+    .btn { padding: 0.6rem 1rem; min-height: 44px; }
+    .btn-sm { padding: 0.4rem 0.75rem; font-size: 0.85rem; min-height: 36px; }
     td, th { padding: 0.5rem; }
     .nav-links { gap: 0.5rem; }
     .nav-links a { font-size: 0.8rem; }
+    .actual-qty-input { width: 80px !important; min-height: 36px; font-size: 1rem !important; }
+    .note-input { min-height: 36px; }
 }

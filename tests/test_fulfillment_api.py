@@ -122,7 +122,7 @@ class TestBulkUpdateAPI:
 
         # Verify in DB
         for line_id in ids:
-            line = ReplenishmentPlanLine.query.get(line_id)
+            line = db.session.get(ReplenishmentPlanLine, line_id)
             assert line.status == 'loaded'
 
     def test_warehouse_user_can_update(self, warehouse_client, sample_plan, db):

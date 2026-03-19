@@ -12,7 +12,9 @@ class Config:
     # ── Session settings ──────────────────────────────────────
     PERMANENT_SESSION_LIFETIME = int(os.environ.get('SESSION_LIFETIME_SECONDS', 28800))  # 8 hours
 
-    # ── Recommendation engine ─────────────────────────────────
+    # ── Forecasting engine ───────────────────────────────────
+    # Supported: 'simple_average' (V1). Future: 'weighted_average', 'ml_model'
+    FORECAST_METHOD = os.environ.get('FORECAST_METHOD', 'simple_average')
     DEFAULT_USAGE_WINDOW_SHORT = 7    # days for short-term average
     DEFAULT_USAGE_WINDOW_LONG = 14    # days for long-term average
     MIN_DATA_POINTS_HIGH_CONFIDENCE = 5

@@ -32,6 +32,10 @@ def store_new():
             flash('Name and code are required.', 'danger')
             return render_template('admin/store_form.html', store=None)
 
+        if len(name) > 200 or len(code) > 50:
+            flash('Name must be 200 characters or fewer, code 50 or fewer.', 'danger')
+            return render_template('admin/store_form.html', store=None)
+
         if Store.query.filter_by(code=code).first():
             flash(f'Store code "{code}" already exists.', 'danger')
             return render_template('admin/store_form.html', store=None)
@@ -118,6 +122,10 @@ def _save_item(item):
 
     if not name or not sku:
         flash('Item name and SKU are required.', 'danger')
+        return render_template('admin/item_form.html', item=item)
+
+    if len(name) > 200 or len(sku) > 50:
+        flash('Item name must be 200 characters or fewer, SKU 50 or fewer.', 'danger')
         return render_template('admin/item_form.html', item=item)
 
     try:
@@ -209,6 +217,10 @@ def _save_setting(setting):
         min_send_quantity = float(request.form.get('min_send_quantity', 0))
     except (ValueError, TypeError):
         flash('Numeric fields must be valid numbers.', 'danger')
+        return redirect(request.url)
+
+    if any(v < 0 for v in [par_level, safety_stock, reorder_threshold, min_send_quantity]):
+        flash('Numeric fields must be non-negative.', 'danger')
         return redirect(request.url)
 
     rounding_rule = request.form.get('rounding_rule', 'none')

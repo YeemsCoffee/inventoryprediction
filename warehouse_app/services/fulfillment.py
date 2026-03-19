@@ -36,7 +36,7 @@ def update_line_status(line_id, new_status=None, actual_quantity=None, picker_no
         changes.append(f'actual_qty: {old_qty} -> {actual_quantity}')
 
     if picker_note is not None:
-        line.picker_note = picker_note
+        line.picker_note = str(picker_note)[:500]
         changes.append(f'note updated')
 
     if changes:

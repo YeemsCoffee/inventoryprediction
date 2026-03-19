@@ -135,7 +135,7 @@ class TestPlanGeneration:
         old_id = result1['plan'].id
         result2 = generate_plan(date.today(), user_id=None, regenerate=True)
         # The old plan should no longer exist
-        assert ReplenishmentPlan.query.get(old_id) is None or result2['plan'].id >= old_id
+        assert db.session.get(ReplenishmentPlan, old_id) is None or result2['plan'].id >= old_id
         # New plan should be a fresh draft
         assert result2['plan'].status == 'draft'
         assert result2['total_lines'] > 0
@@ -191,7 +191,7 @@ class TestFulfillmentService:
         count = bulk_update_status(ids, 'delivered')
         assert count == len(ids)
         for l_id in ids:
-            assert ReplenishmentPlanLine.query.get(l_id).status == 'delivered'
+            assert db.session.get(ReplenishmentPlanLine, l_id).status == 'delivered'
 
     def test_bulk_update_invalid_status(self, db):
         with pytest.raises(ValueError, match='Invalid status'):

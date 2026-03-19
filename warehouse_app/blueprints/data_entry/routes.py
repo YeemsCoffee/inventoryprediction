@@ -1,6 +1,7 @@
+import math
 from datetime import datetime
 
-from flask import render_template, request, redirect, url_for, flash
+from flask import render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_required
 
 from warehouse_app.blueprints.data_entry import data_entry_bp
@@ -44,10 +45,11 @@ def daily_usage():
 
         try:
             quantity = float(qty_str)
-            if quantity < 0:
+            max_qty = current_app.config.get('CSV_MAX_QUANTITY', 999999)
+            if not math.isfinite(quantity) or quantity < 0 or quantity > max_qty:
                 raise ValueError
         except ValueError:
-            flash('Quantity must be a non-negative number.', 'danger')
+            flash('Quantity must be a non-negative number (max 999,999).', 'danger')
             return render_template('data_entry/daily_usage.html', stores=stores, items=items)
 
         existing = DailyUsage.query.filter_by(
@@ -122,10 +124,11 @@ def inventory_snapshots():
 
         try:
             quantity = float(qty_str)
-            if quantity < 0:
+            max_qty = current_app.config.get('CSV_MAX_QUANTITY', 999999)
+            if not math.isfinite(quantity) or quantity < 0 or quantity > max_qty:
                 raise ValueError
         except ValueError:
-            flash('Quantity must be a non-negative number.', 'danger')
+            flash('Quantity must be a non-negative number (max 999,999).', 'danger')
             return render_template('data_entry/inventory_snapshot.html', stores=stores, items=items)
 
         existing = InventorySnapshot.query.filter_by(

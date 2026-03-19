@@ -284,10 +284,17 @@ def api_update_line():
     except (ValueError, TypeError):
         return jsonify({'error': 'line_id must be an integer'}), 400
 
+    # Validate status before service call
+    if new_status is not None and new_status not in VALID_STATUSES:
+        return jsonify({'error': f'Invalid status. Must be one of: {", ".join(VALID_STATUSES)}'}), 400
+
     # Convert actual_quantity to float if provided
     if actual_quantity is not None:
         try:
             actual_quantity = float(actual_quantity)
+            import math
+            if not math.isfinite(actual_quantity):
+                return jsonify({'error': 'actual_quantity must be a finite number'}), 400
             if actual_quantity < 0:
                 return jsonify({'error': 'actual_quantity must be non-negative'}), 400
         except (ValueError, TypeError):
@@ -328,6 +335,10 @@ def api_bulk_update():
 
     if not line_ids or not new_status:
         return jsonify({'error': 'line_ids and status are required'}), 400
+
+    # Validate status before service call
+    if new_status not in VALID_STATUSES:
+        return jsonify({'error': f'Invalid status. Must be one of: {", ".join(VALID_STATUSES)}'}), 400
 
     # Validate line_ids are all integers and cap bulk size
     if len(line_ids) > 500:

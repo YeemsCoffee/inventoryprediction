@@ -116,6 +116,7 @@ def calculate_recommendation(store_id, item_id, plan_date):
         'explanation_text': '. '.join(explanations) + '.',
         'warning_flags': warnings,
         # Forecast metadata for audit trail / transparency
+        'forecast_method': forecast.get('forecast_method', 'simple_average'),
         'forecast_avg_daily_usage': avg_daily_usage,
         'forecast_on_hand': on_hand,
         'forecast_target': target,

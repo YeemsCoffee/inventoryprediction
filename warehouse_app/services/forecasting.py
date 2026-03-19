@@ -84,6 +84,7 @@ def build_forecast(store_id, item_id, plan_date):
         warnings: list[str] - warning flags
     """
     # Read config values
+    forecast_method = current_app.config.get('FORECAST_METHOD', 'simple_average')
     window_short = current_app.config.get('DEFAULT_USAGE_WINDOW_SHORT', 7)
     window_long = current_app.config.get('DEFAULT_USAGE_WINDOW_LONG', 14)
     min_data_points = current_app.config.get('MIN_DATA_POINTS_HIGH_CONFIDENCE', 5)
@@ -159,4 +160,5 @@ def build_forecast(store_id, item_id, plan_date):
         'on_hand_date': on_hand_date,
         'explanations': explanations,
         'warnings': warnings,
+        'forecast_method': forecast_method,
     }

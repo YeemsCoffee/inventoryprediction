@@ -5,6 +5,7 @@ Validates rows, skips bad data, returns a summary.
 """
 import csv
 import io
+import math
 from datetime import date, datetime
 
 from flask import current_app
@@ -83,10 +84,12 @@ def import_daily_usage_csv(file_content, source='csv_import'):
     skipped = 0
     errors = []
 
+    row_count = 0
     for i, row in enumerate(reader, start=2):  # line 2 = first data row
-        if i - 1 > max_rows:
+        if row_count >= max_rows:
             errors.append(f'Row limit of {max_rows} exceeded. Remaining rows skipped.')
             break
+        row_count += 1
 
         try:
             store_code = row.get('store_code', '').strip().upper()
@@ -125,6 +128,8 @@ def import_daily_usage_csv(file_content, source='csv_import'):
             # Validate quantity
             try:
                 quantity = float(qty_str)
+                if not math.isfinite(quantity):
+                    raise ValueError('non-finite')
                 if quantity < 0:
                     raise ValueError('negative')
                 if quantity > max_quantity:
@@ -192,10 +197,12 @@ def import_inventory_snapshot_csv(file_content, source='csv_import'):
     skipped = 0
     errors = []
 
+    row_count = 0
     for i, row in enumerate(reader, start=2):
-        if i - 1 > max_rows:
+        if row_count >= max_rows:
             errors.append(f'Row limit of {max_rows} exceeded. Remaining rows skipped.')
             break
+        row_count += 1
 
         try:
             store_code = row.get('store_code', '').strip().upper()
@@ -230,6 +237,8 @@ def import_inventory_snapshot_csv(file_content, source='csv_import'):
 
             try:
                 quantity = float(qty_str)
+                if not math.isfinite(quantity):
+                    raise ValueError('non-finite')
                 if quantity < 0:
                     raise ValueError('negative')
                 if quantity > max_quantity:

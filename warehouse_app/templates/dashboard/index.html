@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Dashboard - Warehouse Replenishment{% endblock %}
 {% block content %}
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
+<div class="page-header">
     <h1>Dashboard</h1>
-    <form method="GET" style="display:flex; align-items:center; gap:0.5rem;">
+    <form method="GET" class="filter-bar no-print" style="margin-bottom:0;">
         <label for="plan_date" style="font-weight:600; font-size:0.9rem;">Plan Date:</label>
         <input type="date" id="plan_date" name="plan_date" value="{{ stats.plan_date }}" onchange="this.form.submit()">
     </form>
 </div>
 
 {% if stats.plan_exists %}
-<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
+<div class="stats-grid">
     <div class="stat-card">
         <div class="stat-label">Plan Status</div>
         <div><span class="badge badge-{{ stats.plan_status }}">{{ stats.plan_status }}</span></div>
@@ -24,7 +24,7 @@
         <div class="stat-value">{{ stats.total_lines }}</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">Total Qty to Pick</div>
+        <div class="stat-label">Total Qty</div>
         <div class="stat-value">{{ "%.0f"|format(stats.total_quantity) }}</div>
     </div>
     <div class="stat-card">
@@ -49,7 +49,16 @@
     </div>
 </div>
 
-<div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:2rem;">
+{% set total = stats.total_lines if stats.total_lines > 0 else 1 %}
+<div class="progress-bar" title="{{ stats.delivered_lines }} delivered / {{ stats.total_lines }} total">
+    <div class="progress-segment progress-segment-delivered" style="width:{{ (stats.delivered_lines / total * 100)|round(1) }}%"></div>
+    <div class="progress-segment progress-segment-loaded" style="width:{{ (stats.loaded_lines / total * 100)|round(1) }}%"></div>
+    <div class="progress-segment progress-segment-picked" style="width:{{ (stats.picked_lines / total * 100)|round(1) }}%"></div>
+    <div class="progress-segment progress-segment-shorted" style="width:{{ (stats.shorted_lines / total * 100)|round(1) }}%"></div>
+    <div class="progress-segment progress-segment-pending" style="width:{{ (stats.pending_lines / total * 100)|round(1) }}%"></div>
+</div>
+
+<div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:2rem;" class="no-print">
     {% if current_user.role == 'admin' %}
     <a href="{{ url_for('plans.generate') }}" class="btn btn-primary">Generate Daily Plan</a>
     {% endif %}
@@ -59,7 +68,7 @@
 
 {% if stores %}
 <h2 style="font-size:1.1rem; margin-bottom:0.75rem;">Store Delivery Sheets</h2>
-<div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+<div class="store-buttons">
     {% for store in stores %}
     <a href="{{ url_for('warehouse.store_delivery_sheet', store_id=store.id, plan_date=stats.plan_date) }}" class="btn btn-secondary">{{ store.name }}</a>
     {% endfor %}
@@ -67,8 +76,8 @@
 {% endif %}
 
 {% else %}
-<div style="background:#fff; padding:2rem; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); text-align:center;">
-    <p style="font-size:1.1rem; color:#666; margin-bottom:1rem;">No plan exists for {{ stats.plan_date }}.</p>
+<div class="empty-state">
+    <p>No plan exists for {{ stats.plan_date }}.</p>
     {% if current_user.role == 'admin' %}
     <a href="{{ url_for('plans.generate') }}" class="btn btn-primary">Generate Daily Plan</a>
     {% endif %}

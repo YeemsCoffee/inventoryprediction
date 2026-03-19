@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{{ store.name }} Delivery - Warehouse Replenishment{% endblock %}
 {% block content %}
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
+<div class="page-header">
     <h1>{{ store.name }} — Delivery Sheet</h1>
     <div class="no-print" style="display:flex; gap:0.5rem; align-items:center;">
-        <form method="GET" style="display:flex; align-items:center; gap:0.5rem;">
+        <form method="GET" class="filter-bar" style="margin-bottom:0;">
             <input type="date" name="plan_date" value="{{ plan_date }}" onchange="this.form.submit()">
         </form>
         <button onclick="window.print()" class="btn btn-sm btn-secondary">Print</button>
@@ -12,24 +12,34 @@
 </div>
 
 {% if not plan %}
-<p style="color:#666;">No plan found for {{ plan_date }}.</p>
+<div class="empty-state"><p>No plan found for {{ plan_date }}.</p></div>
 {% elif lines|length == 0 %}
-<p style="color:#666;">No items for {{ store.name }} on {{ plan_date }}.</p>
+<div class="empty-state"><p>No items for {{ store.name }} on {{ plan_date }}.</p></div>
 {% else %}
-<div style="display:flex; gap:1rem; margin-bottom:0.75rem; flex-wrap:wrap; align-items:center;">
-    <div style="font-size:0.85rem; color:#666;">
-        <strong>{{ plan_date }}</strong> &middot; <span class="badge badge-{{ plan.status }}">{{ plan.status }}</span> &middot; {{ lines|length }} items
-    </div>
-    <div id="progress-bar" style="display:flex; gap:0.25rem; font-size:0.8rem;">
-        {% for status in ['pending', 'picked', 'loaded', 'delivered', 'shorted'] %}
-        {% if progress.get(status, 0) > 0 %}
-        <span class="badge badge-{{ status }}">{{ progress[status] }} {{ status }}</span>
-        {% endif %}
-        {% endfor %}
-    </div>
+<div class="meta-line">
+    <strong>{{ plan_date }}</strong>
+    <span class="badge badge-{{ plan.status }}">{{ plan.status }}</span>
+    <span>{{ lines|length }} items</span>
 </div>
 
-<div class="no-print" style="margin-bottom:1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+{% set total = lines|length if lines|length > 0 else 1 %}
+<div class="progress-bar" id="visual-progress">
+    <div class="progress-segment progress-segment-delivered" id="prog-delivered" style="width:{{ (progress.get('delivered', 0) / total * 100)|round(1) }}%"></div>
+    <div class="progress-segment progress-segment-loaded" id="prog-loaded" style="width:{{ (progress.get('loaded', 0) / total * 100)|round(1) }}%"></div>
+    <div class="progress-segment progress-segment-picked" id="prog-picked" style="width:{{ (progress.get('picked', 0) / total * 100)|round(1) }}%"></div>
+    <div class="progress-segment progress-segment-shorted" id="prog-shorted" style="width:{{ (progress.get('shorted', 0) / total * 100)|round(1) }}%"></div>
+    <div class="progress-segment progress-segment-pending" id="prog-pending" style="width:{{ (progress.get('pending', 0) / total * 100)|round(1) }}%"></div>
+</div>
+
+<div id="progress-badges" class="meta-line" style="margin-bottom:0.75rem;">
+    {% for status in ['pending', 'picked', 'loaded', 'delivered', 'shorted'] %}
+    {% if progress.get(status, 0) > 0 %}
+    <span class="badge badge-{{ status }}">{{ progress[status] }} {{ status }}</span>
+    {% endif %}
+    {% endfor %}
+</div>
+
+<div class="bulk-actions no-print">
     <button class="btn btn-sm btn-primary" onclick="bulkAction('picked')">Mark Selected Picked</button>
     <button class="btn btn-sm btn-success" onclick="bulkAction('loaded')">Mark Selected Loaded</button>
     <button class="btn btn-sm btn-success" onclick="bulkAction('delivered')">Mark Selected Delivered</button>
@@ -44,9 +54,9 @@
             <th style="text-align:right;">Rec. Qty</th>
             <th style="text-align:right;" class="no-print">Actual Qty</th>
             <th style="width:90px;">Status</th>
-            <th style="width:60px;">Conf.</th>
+            <th style="width:55px;">Conf.</th>
             <th class="no-print">Note</th>
-            <th class="no-print" style="width:180px;">Actions</th>
+            <th class="no-print" style="width:170px;">Actions</th>
             <th>Warnings</th>
         </tr>
     </thead>
@@ -60,7 +70,7 @@
             <td style="text-align:right;" class="no-print">
                 <input type="number" class="actual-qty-input" data-line-id="{{ line.id }}"
                        value="{{ '%.1f'|format(line.actual_quantity) if line.actual_quantity is not none else '' }}"
-                       step="0.1" min="0" style="width:70px; padding:0.2rem 0.4rem; text-align:right;"
+                       step="0.1" min="0"
                        onchange="updateActualQty(this)">
             </td>
             <td>
@@ -72,15 +82,15 @@
             <td class="no-print">
                 <input type="text" class="note-input" data-line-id="{{ line.id }}"
                        value="{{ line.picker_note or '' }}"
-                       placeholder="Add note..." style="width:120px; padding:0.2rem 0.4rem; font-size:0.85rem;"
+                       placeholder="Note..." style="width:110px;"
                        onchange="updateNote(this)" maxlength="500">
             </td>
             <td class="no-print">
-                <div style="display:flex; gap:0.25rem; flex-wrap:wrap;">
-                    <button class="btn btn-sm btn-primary status-btn" data-line="{{ line.id }}" data-status="picked" onclick="setStatus({{ line.id }}, 'picked', this)">Pick</button>
-                    <button class="btn btn-sm btn-success status-btn" data-line="{{ line.id }}" data-status="loaded" onclick="setStatus({{ line.id }}, 'loaded', this)">Load</button>
-                    <button class="btn btn-sm btn-success status-btn" data-line="{{ line.id }}" data-status="delivered" onclick="setStatus({{ line.id }}, 'delivered', this)">Dlvr</button>
-                    <button class="btn btn-sm btn-danger status-btn" data-line="{{ line.id }}" data-status="shorted" onclick="setStatus({{ line.id }}, 'shorted', this)">Short</button>
+                <div class="action-btns">
+                    <button class="btn btn-sm btn-primary status-btn" onclick="setStatus({{ line.id }}, 'picked', this)">Pick</button>
+                    <button class="btn btn-sm btn-success status-btn" onclick="setStatus({{ line.id }}, 'loaded', this)">Load</button>
+                    <button class="btn btn-sm btn-success status-btn" onclick="setStatus({{ line.id }}, 'delivered', this)">Dlvr</button>
+                    <button class="btn btn-sm btn-danger status-btn" onclick="setStatus({{ line.id }}, 'shorted', this)">Short</button>
                 </div>
             </td>
             <td>
@@ -103,22 +113,26 @@
 
 {% block extra_scripts %}
 <script>
-const STORE_ID = {{ store.id }};
+var TOTAL_LINES = {{ lines|length if lines is defined else 0 }};
+var statusCounts = {{ progress | tojson if progress is defined else '{}' }};
 
-// Track status counts for live progress bar
-var statusCounts = {{ progress | tojson }};
-
-function updateProgressBar() {
-    var bar = document.getElementById('progress-bar');
-    if (!bar) return;
-    var html = '';
-    var order = ['pending', 'picked', 'loaded', 'delivered', 'shorted'];
+function updateProgressUI() {
+    var total = TOTAL_LINES || 1;
+    var order = ['delivered', 'loaded', 'picked', 'shorted', 'pending'];
     for (var i = 0; i < order.length; i++) {
-        var s = order[i];
-        var c = statusCounts[s] || 0;
-        if (c > 0) html += '<span class="badge badge-' + s + '">' + c + ' ' + s + '</span>';
+        var el = document.getElementById('prog-' + order[i]);
+        if (el) el.style.width = ((statusCounts[order[i]] || 0) / total * 100).toFixed(1) + '%';
     }
-    bar.innerHTML = html;
+    var badges = document.getElementById('progress-badges');
+    if (badges) {
+        var html = '';
+        var all = ['pending', 'picked', 'loaded', 'delivered', 'shorted'];
+        for (var j = 0; j < all.length; j++) {
+            var c = statusCounts[all[j]] || 0;
+            if (c > 0) html += '<span class="badge badge-' + all[j] + '">' + c + ' ' + all[j] + '</span>';
+        }
+        badges.innerHTML = html;
+    }
 }
 
 function flashRow(lineId, ok) {
@@ -144,20 +158,22 @@ function setStatus(lineId, status, btn) {
             var oldStatus = badge.textContent.trim();
             badge.textContent = data.status;
             badge.className = 'badge badge-' + data.status;
-            // Update counts
+            var row = document.getElementById('line-' + lineId);
+            if (row) { row.className = 'line-row line-' + data.status; }
             if (statusCounts[oldStatus]) statusCounts[oldStatus]--;
             statusCounts[data.status] = (statusCounts[data.status] || 0) + 1;
-            updateProgressBar();
+            updateProgressUI();
             flashRow(lineId, true);
+            showToast(data.status.charAt(0).toUpperCase() + data.status.slice(1), 'success');
         } else {
             flashRow(lineId, false);
-            alert('Error: ' + (data.error || 'Unknown error'));
+            showToast(data.error || 'Error', 'error');
         }
     })
     .catch(function(err) {
         if (btn) btn.disabled = false;
         flashRow(lineId, false);
-        alert('Network error: ' + err);
+        showToast('Network error', 'error');
     });
 }
 
@@ -177,12 +193,12 @@ function updateActualQty(input) {
             setTimeout(function() { input.style.borderColor = '#ccc'; }, 1500);
         } else {
             input.style.borderColor = '#dc3545';
-            alert('Error: ' + (data.error || 'Unknown error'));
+            showToast(data.error || 'Error', 'error');
         }
     })
     .catch(function(err) {
         input.style.borderColor = '#dc3545';
-        alert('Network error: ' + err);
+        showToast('Network error', 'error');
     });
 }
 
@@ -214,7 +230,7 @@ function toggleSelectAll(checkbox) {
 
 function bulkAction(status) {
     var ids = Array.from(document.querySelectorAll('.line-checkbox:checked')).map(function(cb) { return parseInt(cb.value); });
-    if (ids.length === 0) { alert('Select lines first.'); return; }
+    if (ids.length === 0) { showToast('Select lines first', 'error'); return; }
     if (!confirm('Update ' + ids.length + ' lines to "' + status + '"?')) return;
     fetch('/warehouse/api/bulk-update', {
         method: 'POST',
@@ -231,19 +247,21 @@ function bulkAction(status) {
                     if (statusCounts[old]) statusCounts[old]--;
                     badge.textContent = status;
                     badge.className = 'badge badge-' + status;
+                    var row = document.getElementById('line-' + id);
+                    if (row) { row.className = 'line-row line-' + status; }
                     statusCounts[status] = (statusCounts[status] || 0) + 1;
                     flashRow(id, true);
                 }
             });
-            updateProgressBar();
-            // Uncheck all
+            updateProgressUI();
             document.querySelectorAll('.line-checkbox').forEach(function(cb) { cb.checked = false; });
             document.getElementById('select-all').checked = false;
+            showToast(ids.length + ' lines updated', 'success');
         } else {
-            alert('Error: ' + (data.error || 'Unknown error'));
+            showToast(data.error || 'Error', 'error');
         }
     })
-    .catch(function(err) { alert('Network error: ' + err); });
+    .catch(function(err) { showToast('Network error', 'error'); });
 }
 </script>
 {% endblock %}

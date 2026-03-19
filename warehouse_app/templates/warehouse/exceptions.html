@@ -1,27 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Exceptions - Warehouse Replenishment{% endblock %}
 {% block content %}
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
+<div class="page-header">
     <h1>Exceptions / Shortages</h1>
-    <form method="GET" style="display:flex; align-items:center; gap:0.5rem;" class="no-print">
+    <form method="GET" class="filter-bar no-print" style="margin-bottom:0;">
         <input type="date" name="plan_date" value="{{ plan_date }}" onchange="this.form.submit()">
     </form>
 </div>
 
 {% if not plan %}
-<p style="color:#666;">No plan found for {{ plan_date }}.</p>
+<div class="empty-state"><p>No plan found for {{ plan_date }}.</p></div>
 {% else %}
-<div style="font-size:0.85rem; color:#666; margin-bottom:1rem;">
-    <strong>{{ plan_date }}</strong> &middot;
-    {{ shorted|length }} shorted &middot;
-    {{ low_confidence|length }} low-confidence &middot;
-    {{ warning_lines|length }} with warnings &middot;
-    {{ all_exceptions|length }} total exception lines
+<div class="meta-line">
+    <strong>{{ plan_date }}</strong>
+    <span>{{ shorted|length }} shorted</span>
+    <span>{{ low_confidence|length }} low-confidence</span>
+    <span>{{ warning_lines|length }} warnings</span>
+    <span>{{ all_exceptions|length }} total</span>
 </div>
 
 {% if all_exceptions|length == 0 %}
-<div style="background:#eafaf1; padding:1.5rem; border-radius:6px; text-align:center; color:#155724;">
-    No exceptions found for this plan. All lines are clean.
+<div class="empty-state" style="background:#eafaf1; color:#155724;">
+    <p>No exceptions found. All lines are clean.</p>
 </div>
 {% else %}
 <table>
@@ -40,12 +40,12 @@
     </thead>
     <tbody>
         {% for line in all_exceptions %}
-        <tr>
+        <tr class="{% if line.status == 'shorted' %}line-shorted{% endif %}">
             <td>{{ line.store.name }}</td>
             <td><strong>{{ line.item.item_name }}</strong></td>
             <td>{{ line.item.sku }}</td>
             <td style="text-align:right; font-weight:700;">{{ "%.1f"|format(line.recommended_quantity) }}</td>
-            <td style="text-align:right;">{{ "%.1f"|format(line.actual_quantity) if line.actual_quantity is not none else "—" }}</td>
+            <td style="text-align:right;">{{ "%.1f"|format(line.actual_quantity) if line.actual_quantity is not none else "\u2014" }}</td>
             <td><span class="badge badge-{{ line.status }}">{{ line.status }}</span></td>
             <td><span class="confidence-{{ line.confidence_level }}">{{ line.confidence_level }}</span></td>
             <td>

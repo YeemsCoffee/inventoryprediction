@@ -28,7 +28,7 @@ class ReplenishmentPlanLine(db.Model):
     last_status_change_at = db.Column(db.DateTime, nullable=True)
 
     # ── Forecast metadata (captures inputs used for recommendation) ───
-    forecast_method = db.Column(db.String(30), nullable=True, default='simple_average')
+    forecast_method = db.Column(db.String(30), nullable=True, default='historical_simple_v1')
     forecast_avg_daily_usage = db.Column(db.Numeric(10, 4), nullable=True)
     forecast_on_hand = db.Column(db.Numeric(10, 2), nullable=True)
     forecast_target = db.Column(db.Numeric(10, 2), nullable=True)

@@ -13,11 +13,16 @@ class Config:
     PERMANENT_SESSION_LIFETIME = int(os.environ.get('SESSION_LIFETIME_SECONDS', 28800))  # 8 hours
 
     # ── Forecasting engine ───────────────────────────────────
-    # Supported: 'simple_average' (V1). Future: 'weighted_average', 'ml_model'
-    FORECAST_METHOD = os.environ.get('FORECAST_METHOD', 'simple_average')
+    # Supported: 'historical_simple_v1', 'historical_weighted_v1'
+    # Future: 'ml_model_v1'
+    FORECAST_METHOD = os.environ.get('FORECAST_METHOD', 'historical_simple_v1')
     DEFAULT_USAGE_WINDOW_SHORT = 7    # days for short-term average
     DEFAULT_USAGE_WINDOW_LONG = 14    # days for long-term average
     MIN_DATA_POINTS_HIGH_CONFIDENCE = 5
+
+    # ── Weighted forecast settings (historical_weighted_v1) ──
+    WEIGHTED_DECAY_FACTOR = float(os.environ.get('WEIGHTED_DECAY_FACTOR', '0.9'))
+    WEIGHTED_DOW_MULTIPLIER = float(os.environ.get('WEIGHTED_DOW_MULTIPLIER', '0.0'))  # 0 = disabled
 
     # ── CSV import limits ─────────────────────────────────────
     CSV_MAX_ROWS = 10000

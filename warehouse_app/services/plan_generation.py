@@ -103,7 +103,7 @@ def generate_plan(plan_date, user_id, regenerate=False):
             explanation_text=rec['explanation_text'],
             warning_flags=rec['warning_flags'],
             # Forecast metadata
-            forecast_method=rec.get('forecast_method', 'simple_average'),
+            forecast_method=rec.get('forecast_method', 'historical_simple_v1'),
             forecast_avg_daily_usage=rec['forecast_avg_daily_usage'],
             forecast_on_hand=rec['forecast_on_hand'],
             forecast_target=rec['forecast_target'],

@@ -205,25 +205,25 @@ class TestForecastMethodArchitecture:
     def test_forecast_method_in_config(self, app):
         with app.app_context():
             method = app.config.get('FORECAST_METHOD')
-            assert method == 'simple_average'
+            assert method == 'historical_simple_v1'
 
     def test_forecast_method_in_build_forecast(self, app, db, sample_stores, sample_items,
                                                 sample_settings, sample_usage, sample_snapshots):
         from warehouse_app.services.forecasting import build_forecast
         with app.app_context():
             forecast = build_forecast(sample_stores[0].id, sample_items[0].id, date.today())
-            assert forecast['forecast_method'] == 'simple_average'
+            assert forecast['forecast_method'] == 'historical_simple_v1'
 
     def test_forecast_method_in_recommendation(self, app, db, sample_stores, sample_items,
                                                 sample_settings, sample_usage, sample_snapshots):
         from warehouse_app.services.replenishment import calculate_recommendation
         with app.app_context():
             rec = calculate_recommendation(sample_stores[0].id, sample_items[0].id, date.today())
-            assert rec['forecast_method'] == 'simple_average'
+            assert rec['forecast_method'] == 'historical_simple_v1'
 
     def test_forecast_method_persisted_on_plan_line(self, app, sample_plan, db):
         line = ReplenishmentPlanLine.query.filter_by(plan_id=sample_plan.id).first()
-        assert line.forecast_method == 'simple_average'
+        assert line.forecast_method == 'historical_simple_v1'
 
     def test_plan_line_has_forecast_metadata(self, app, sample_plan, db):
         line = ReplenishmentPlanLine.query.filter_by(plan_id=sample_plan.id).first()

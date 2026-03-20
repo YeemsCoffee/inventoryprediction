@@ -32,7 +32,7 @@ from warehouse_app.models.inventory_snapshot import InventorySnapshot
 from warehouse_app.models.replenishment_plan import ReplenishmentPlan
 from warehouse_app.models.replenishment_plan_line import ReplenishmentPlanLine
 
-from config.products import PRODUCT_ALIASES
+from config.products import PRODUCT_ALIASES, OBSOLETE_PRODUCTS
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -274,8 +274,9 @@ def seed():
         for (_, product) in par_levels:
             all_product_names.add(product)
 
-        # Remove empty strings
+        # Remove empty strings and obsolete products
         all_product_names.discard('')
+        all_product_names -= OBSOLETE_PRODUCTS
 
         print(f"\nTotal unique products: {len(all_product_names)}")
 

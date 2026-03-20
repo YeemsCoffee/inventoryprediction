@@ -76,5 +76,11 @@ SPORADIC_PRODUCTS = {
     "Receipt rolls",
 }
 
+# Products that are obsolete and should be excluded from the catalog
+OBSOLETE_PRODUCTS = {
+    "Mirado (retail)",
+    "Supremo (retail)",
+}
+
 # Stores
 STORES = ("Gardena", "KTOWN")

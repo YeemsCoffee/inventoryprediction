@@ -28,6 +28,7 @@
     <form method="POST" action="{{ url_for('plans.delete', plan_id=plan.id) }}"
           style="display:inline; margin-left:auto;"
           onsubmit="return confirm('Delete the draft plan for {{ plan_date }}? This cannot be undone.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-sm btn-danger">Delete Plan</button>
     </form>
     {% endif %}

@@ -5,8 +5,10 @@ from flask_login import login_required, current_user
 
 from warehouse_app.blueprints.plans import plans_bp
 from warehouse_app.auth_helpers import admin_required
+from warehouse_app.extensions import db
 from warehouse_app.models.replenishment_plan import ReplenishmentPlan
 from warehouse_app.services.plan_generation import generate_plan
+from warehouse_app.services.audit import log_action
 
 
 @plans_bp.route('/', methods=['GET', 'POST'])
@@ -66,3 +68,27 @@ def generate():
                                zero_qty_skipped=result.get('zero_qty_skipped', 0))
 
     return render_template('plans/generate.html')
+
+
+@plans_bp.route('/<int:plan_id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def delete(plan_id):
+    plan = ReplenishmentPlan.query.get_or_404(plan_id)
+
+    if plan.status != 'draft':
+        flash(
+            f'Cannot delete a plan with status "{plan.status}". '
+            'Only draft plans can be deleted.',
+            'danger',
+        )
+        return redirect(url_for('warehouse.pick_list', plan_date=plan.plan_date))
+
+    plan_date = plan.plan_date
+    log_action('plan', plan.id, 'delete',
+               old_value=f'plan_date={plan_date}, lines={plan.lines.count()}')
+    db.session.delete(plan)
+    db.session.commit()
+
+    flash(f'Plan for {plan_date} has been deleted.', 'success')
+    return redirect(url_for('plans.generate'))

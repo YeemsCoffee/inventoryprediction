@@ -24,6 +24,13 @@
         <button type="submit" class="btn btn-sm btn-secondary">Search</button>
     </form>
     <button onclick="window.print()" class="btn btn-sm btn-secondary">Print</button>
+    {% if plan.status == 'draft' %}
+    <form method="POST" action="{{ url_for('plans.delete', plan_id=plan.id) }}"
+          style="display:inline; margin-left:auto;"
+          onsubmit="return confirm('Delete the draft plan for {{ plan_date }}? This cannot be undone.');">
+        <button type="submit" class="btn btn-sm btn-danger">Delete Plan</button>
+    </form>
+    {% endif %}
 </div>
 
 <div class="meta-line">
@@ -53,8 +60,8 @@
             <td><strong>{{ item.item_name }}</strong></td>
             <td>{{ item.sku }}</td>
             <td>{{ item.unit_of_measure }}</td>
-            <td style="text-align:right; font-weight:700; font-size:1.05rem;">{{ "%.1f"|format(item.total_recommended) }}</td>
-            <td style="text-align:right;">{{ "%.1f"|format(item.total_actual) if item.total_actual else "\u2014" }}</td>
+            <td style="text-align:right; font-weight:700; font-size:1.05rem;">{{ item.total_recommended|int }}</td>
+            <td style="text-align:right;">{{ item.total_actual|int if item.total_actual else "\u2014" }}</td>
             <td style="text-align:center;">{{ item.store_count }}</td>
             <td>
                 {% set ss = status_summary.get(item.id, {}) %}
@@ -78,8 +85,8 @@
                         {% for bd in store_breakdown.get(item.id, []) %}
                         <tr>
                             <td>{{ bd.store_name }}</td>
-                            <td style="text-align:right;">{{ "%.1f"|format(bd.recommended) }}</td>
-                            <td style="text-align:right;">{{ "%.1f"|format(bd.actual) if bd.actual is not none else "\u2014" }}</td>
+                            <td style="text-align:right;">{{ bd.recommended|int }}</td>
+                            <td style="text-align:right;">{{ bd.actual|int if bd.actual is not none else "\u2014" }}</td>
                             <td><span class="badge badge-{{ bd.status }}">{{ bd.status }}</span></td>
                         </tr>
                         {% endfor %}

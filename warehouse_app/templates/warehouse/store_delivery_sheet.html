@@ -66,7 +66,7 @@
             <td class="no-print"><input type="checkbox" class="line-checkbox" value="{{ line.id }}"></td>
             <td><strong>{{ line.item.item_name }}</strong></td>
             <td>{{ line.item.sku }}</td>
-            <td style="text-align:right; font-weight:700; font-size:1.05rem;">{{ "%.1f"|format(line.recommended_quantity) }}</td>
+            <td style="text-align:right; font-weight:700; font-size:1.05rem;">{{ line.recommended_quantity|int }}</td>
             <td style="text-align:right;" class="no-print">
                 <input type="number" class="actual-qty-input" data-line-id="{{ line.id }}"
                        value="{{ '%.1f'|format(line.actual_quantity) if line.actual_quantity is not none else '' }}"

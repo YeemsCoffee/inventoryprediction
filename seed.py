@@ -4,17 +4,22 @@ Seed script for warehouse replenishment app.
 Usage:
     FLASK_APP=warehouse_app:create_app python seed.py
 
-Creates realistic demo data for 2 stores (Gardena, K-Town) with
-20 inventory items, 30+ days of usage history, recent snapshots,
-and example replenishment plans.
+Loads real product data from:
+  - Historical Sales Orders 0107 - 0309.csv
+  - Historical Sales Orders 0310 - 0319.csv
+  - Store Max Items.xlsx (par levels)
 
 Environment variables:
     SEED_ADMIN_PASSWORD     - Admin user password (default: admin123)
     SEED_WAREHOUSE_PASSWORD - Warehouse user password (default: warehouse123)
 """
+import csv
 import os
-import random
+import re
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
+
+import openpyxl
 
 from warehouse_app import create_app
 from warehouse_app.extensions import db
@@ -27,75 +32,183 @@ from warehouse_app.models.inventory_snapshot import InventorySnapshot
 from warehouse_app.models.replenishment_plan import ReplenishmentPlan
 from warehouse_app.models.replenishment_plan_line import ReplenishmentPlanLine
 
+from config.products import PRODUCT_ALIASES
 
-# ── Item catalog ─────────────────────────────────────────────
-ITEMS_CATALOG = [
-    # (name, sku, category, unit_of_measure, case_pack_quantity, storage_type)
-    ('Whole Milk', 'MILK-WHL-GAL', 'Dairy', 'gallon', 4, 'refrigerated'),
-    ('Oat Milk', 'MILK-OAT-HG', 'Dairy', 'half_gallon', 6, 'refrigerated'),
-    ('Heavy Cream', 'CRM-HVY-QT', 'Dairy', 'quart', 12, 'refrigerated'),
-    ('Vanilla Syrup', 'SYR-VAN-750', 'Syrups', 'bottle', 6, 'dry'),
-    ('Caramel Syrup', 'SYR-CAR-750', 'Syrups', 'bottle', 6, 'dry'),
-    ('Hazelnut Syrup', 'SYR-HAZ-750', 'Syrups', 'bottle', 6, 'dry'),
-    ('Mocha Sauce', 'SAU-MOC-64', 'Syrups', 'bottle', 4, 'dry'),
-    ('Espresso Beans (House)', 'BEA-HSE-5LB', 'Coffee', 'bag', 4, 'dry'),
-    ('Espresso Beans (Single Origin)', 'BEA-SOR-5LB', 'Coffee', 'bag', 4, 'dry'),
-    ('Drip Coffee Beans', 'BEA-DRP-5LB', 'Coffee', 'bag', 4, 'dry'),
-    ('Matcha Powder', 'PWD-MAT-1LB', 'Powders', 'bag', 12, 'dry'),
-    ('Chai Concentrate', 'CHA-CON-32', 'Beverages', 'bottle', 6, 'refrigerated'),
-    ('Cup 12oz', 'CUP-12OZ', 'Supplies', 'sleeve', 20, 'dry'),
-    ('Cup 16oz', 'CUP-16OZ', 'Supplies', 'sleeve', 20, 'dry'),
-    ('Lid 12oz/16oz', 'LID-1216', 'Supplies', 'sleeve', 20, 'dry'),
-    ('Straw', 'STR-STD', 'Supplies', 'box', 24, 'dry'),
-    ('Napkin', 'NAP-STD', 'Supplies', 'pack', 12, 'dry'),
-    ('Croissant', 'PST-CRO', 'Pastry', 'piece', 12, 'frozen'),
-    ('Blueberry Muffin', 'PST-BMF', 'Pastry', 'piece', 12, 'frozen'),
-    ('Chocolate Chip Cookie', 'PST-CCC', 'Pastry', 'piece', 24, 'frozen'),
-]
-
-# ── Per-item settings defaults ─────────────────────────────
-SETTINGS_DEFAULTS = {
-    # sku: (par_level, safety_stock, reorder_threshold, min_send, rounding_rule)
-    'MILK-WHL-GAL': (8, 2, 3, 2, 'round_up_case_pack'),
-    'MILK-OAT-HG': (6, 2, 2, 2, 'round_up_case_pack'),
-    'CRM-HVY-QT': (4, 1, 2, 1, 'round_up_integer'),
-    'SYR-VAN-750': (4, 1, 2, 1, 'round_up_case_pack'),
-    'SYR-CAR-750': (3, 1, 1, 1, 'round_up_integer'),
-    'SYR-HAZ-750': (2, 1, 1, 1, 'none'),
-    'SAU-MOC-64': (3, 1, 1, 1, 'round_up_integer'),
-    'BEA-HSE-5LB': (6, 2, 2, 1, 'round_up_case_pack'),
-    'BEA-SOR-5LB': (3, 1, 1, 1, 'round_up_integer'),
-    'BEA-DRP-5LB': (4, 1, 2, 1, 'round_up_case_pack'),
-    'PWD-MAT-1LB': (3, 1, 1, 1, 'round_up_integer'),
-    'CHA-CON-32': (3, 1, 1, 1, 'round_up_integer'),
-    'CUP-12OZ': (10, 3, 4, 2, 'round_up_case_pack'),
-    'CUP-16OZ': (8, 2, 3, 2, 'round_up_case_pack'),
-    'LID-1216': (10, 3, 4, 2, 'round_up_case_pack'),
-    'STR-STD': (4, 1, 2, 1, 'round_up_case_pack'),
-    'NAP-STD': (4, 1, 2, 1, 'round_up_case_pack'),
-    'PST-CRO': (12, 3, 4, 6, 'round_up_case_pack'),
-    'PST-BMF': (8, 2, 3, 6, 'round_up_case_pack'),
-    'PST-CCC': (10, 2, 3, 6, 'round_up_case_pack'),
-}
-
-# ── Base daily usage per item ─────────────────────────────
-BASE_USAGE = {
-    'MILK-WHL-GAL': 4.0, 'MILK-OAT-HG': 3.0, 'CRM-HVY-QT': 1.5,
-    'SYR-VAN-750': 1.2, 'SYR-CAR-750': 0.8, 'SYR-HAZ-750': 0.4,
-    'SAU-MOC-64': 0.7, 'BEA-HSE-5LB': 2.5, 'BEA-SOR-5LB': 1.0,
-    'BEA-DRP-5LB': 1.5, 'PWD-MAT-1LB': 0.8, 'CHA-CON-32': 0.6,
-    'CUP-12OZ': 5.0, 'CUP-16OZ': 4.0, 'LID-1216': 5.0,
-    'STR-STD': 2.0, 'NAP-STD': 2.0,
-    'PST-CRO': 8.0, 'PST-BMF': 5.0, 'PST-CCC': 6.0,
-}
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ── Store definitions ─────────────────────────────────────
 STORES = [
     {'name': 'Gardena', 'code': 'GARDENA', 'address': '1234 W Gardena Blvd, Gardena, CA 90247',
-     'delivery_schedule': 'daily', 'volume_multiplier': 1.0},
+     'delivery_schedule': 'daily'},
     {'name': 'K-Town', 'code': 'KTOWN', 'address': '5678 Wilshire Blvd, Los Angeles, CA 90036',
-     'delivery_schedule': 'daily', 'volume_multiplier': 0.7},
+     'delivery_schedule': 'daily'},
 ]
+
+# Map store names in CSV -> store codes in DB
+STORE_NAME_MAP = {
+    'Gardena': 'GARDENA',
+    'KTOWN': 'KTOWN',
+    'K-Town': 'KTOWN',
+}
+
+# Product categories inferred from the Excel "Product Group" and common sense
+CATEGORY_MAP = {
+    '2% Milk': 'Dairy', 'Whole Milk': 'Dairy', 'Half & Half': 'Dairy',
+    'Oat Milk': 'Dairy', 'Almond Milk': 'Dairy', 'Condensed Milk': 'Dairy',
+    'Ube Condensed Milk': 'Dairy',
+    'Espresso Beans': 'Coffee', 'Decaf Beans': 'Coffee', 'Sanchez (retail)': 'Coffee',
+    'Mirado (retail)': 'Coffee', 'Supremo (retail)': 'Coffee',
+    'Coldbrew Concentrate': 'Coffee', 'Cold Brew Beans': 'Coffee',
+    'Vanilla Syrup': 'Syrups', 'Caramel': 'Syrups', 'Dulce': 'Syrups',
+    'Mocha': 'Syrups', 'Honey': 'Syrups', 'Rose': 'Syrups',
+    'Lavender': 'Syrups', 'Musco Syrup': 'Syrups', 'Agave Cases': 'Syrups',
+    'Chai': 'Beverages', 'Tonic Water': 'Beverages',
+    'M1200 Matcha': 'Powders', 'Soyo Matcha': 'Powders',
+    'Cinnamon Powder': 'Powders', 'Cocoa Box': 'Powders',
+    'Matcha Drizzle': 'Powders', 'Buttercream': 'Powders', 'Vienna Cream': 'Powders',
+    'CS Vienna Cream': 'Powders',
+    'Passionfruit Puree': 'Purees', 'Passionfruit': 'Purees',
+    'Strawberry Puree Cases': 'Purees', 'Strawberry Puree': 'Purees',
+    'Sugar Tub': 'Sweeteners', 'Sugar in the raw': 'Sweeteners',
+    'Tea Bag': 'Tea', 'Jasmine Tea Bag': 'Tea', 'Jasmine Tea': 'Tea',
+    'Scarlet Tea': 'Tea', 'Early Grey Tea Bag': 'Tea', 'Mint Tea Bag': 'Tea',
+    '10oz Hot Cup': 'Supplies', '8oz Hot Cup': 'Supplies',
+    'Hot Lid': 'Supplies', 'Ice lid': 'Supplies', 'Ice Cups': 'Supplies',
+    'Custom Ice Cups': 'Supplies', 'Cup Carriers': 'Supplies',
+    'Cup Sleeves - Red': 'Supplies', 'Cup Sleeves - Green': 'Supplies',
+    'Cup Sleeves': 'Supplies',
+    'Black Straws': 'Supplies', 'Wooden Stir Stick': 'Supplies',
+    'Lid Plug': 'Supplies', 'Beverage Napkin': 'Supplies',
+    'Paper Bag': 'Supplies', 'Pastry Bag, Brown': 'Supplies',
+    'Pasty Bag, Brown': 'Supplies',
+    'Receipt rolls': 'Supplies', 'Forks': 'Supplies',
+    '2 Cup Carrier': 'Supplies', 'Custom 2 Cup Carrier Bag': 'Supplies',
+    'Custom 4 Cup Carrier Bag': 'Supplies',
+    'Paper 2 Cup Carrier Bag': 'Supplies',
+    'Paper 4 Cup Carrier Bag - Tamper Resistant': 'Supplies',
+    'Bleach': 'Cleaning', 'Dish Detergent': 'Cleaning',
+    'Hand Soap': 'Cleaning', 'Toilet Paper': 'Cleaning',
+    'Toilet Solution': 'Cleaning', 'Paper Towel': 'Cleaning',
+    'Black Trash Bag': 'Cleaning', 'Espresso Trash Bag': 'Cleaning',
+    'Nitrile Gloves': 'Cleaning', 'Floor Cleaner': 'Cleaning',
+    'Sanitizing solution': 'Cleaning', 'Toilet cover': 'Cleaning',
+    'Rinza': 'Equipment', 'Cafiza': 'Equipment', 'Tumblers': 'Equipment',
+    'Splenda': 'Sweeteners',
+    'Pour Over Filter': 'Supplies', 'Sponge': 'Cleaning',
+    'Dish gloves': 'Cleaning', 'Bottle Brush': 'Cleaning',
+    'White trash bag': 'Cleaning',
+}
+
+
+def _normalize(name):
+    """Apply alias mapping to normalize a product name."""
+    return PRODUCT_ALIASES.get(name, name)
+
+
+def _make_sku(name):
+    """Generate a SKU from a product name."""
+    clean = re.sub(r'[^a-zA-Z0-9]+', '-', name).strip('-').upper()
+    return clean
+
+
+def _parse_date_mdy(s):
+    """Parse M/D/YYYY date string."""
+    try:
+        return datetime.strptime(s.strip(), '%m/%d/%Y').date()
+    except ValueError:
+        return None
+
+
+def _load_old_csv():
+    """Load Historical Sales Orders 0107 - 0309.csv.
+    Returns list of (store_code, product_name, order_date, quantity)."""
+    path = os.path.join(BASE_DIR, 'Historical Sales Orders 0107 - 0309.csv')
+    rows = []
+    with open(path, encoding='utf-8-sig') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            customer = row['CustomerName'].strip()
+            product = row['ProductDescription'].strip()
+            date_str = row['OrderDate'].strip()
+            qty_str = row['OrderQuantity'].strip()
+
+            if not product or not customer:
+                continue
+
+            store_code = STORE_NAME_MAP.get(customer)
+            if not store_code:
+                continue
+
+            order_date = _parse_date_mdy(date_str)
+            if not order_date:
+                continue
+
+            try:
+                qty = float(qty_str)
+            except (ValueError, TypeError):
+                continue
+
+            product = _normalize(product)
+            rows.append((store_code, product, order_date, qty))
+    return rows
+
+
+def _load_new_csv():
+    """Load Historical Sales Orders 0310 - 0319.csv.
+    Returns list of (store_code, product_name, order_date, quantity)."""
+    path = os.path.join(BASE_DIR, 'Historical Sales Orders 0310 - 0319.csv')
+    rows = []
+    with open(path, encoding='utf-8-sig') as f:
+        # Skip the title row ("Sales Enquiry as of ...")
+        next(f)
+        reader = csv.DictReader(f)
+        for row in reader:
+            customer = row['Customer'].strip()
+            product = row['Product'].strip()
+            date_str = row['Order Date'].strip()
+            qty_str = row['Quantity'].strip()
+
+            if not product or not customer:
+                continue
+
+            store_code = STORE_NAME_MAP.get(customer)
+            if not store_code:
+                continue
+
+            order_date = _parse_date_mdy(date_str)
+            if not order_date:
+                continue
+
+            try:
+                qty = float(qty_str)
+            except (ValueError, TypeError):
+                continue
+
+            product = _normalize(product)
+            rows.append((store_code, product, order_date, qty))
+    return rows
+
+
+def _load_par_levels():
+    """Load par levels from Store Max Items.xlsx.
+    Returns dict: {(store_code, canonical_product_name): max_quantity}."""
+    path = os.path.join(BASE_DIR, 'Store Max Items.xlsx')
+    wb = openpyxl.load_workbook(path, read_only=True)
+    ws = wb.active
+    pars = {}
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        store_name, product, max_qty = row
+        if not product or not store_name:
+            continue
+        store_code = STORE_NAME_MAP.get(store_name.strip(), store_name.strip().upper())
+        product = _normalize(product.strip())
+        try:
+            max_qty = float(max_qty)
+        except (ValueError, TypeError):
+            continue
+        pars[(store_code, product)] = max_qty
+    wb.close()
+    return pars
 
 
 def seed():
@@ -128,8 +241,7 @@ def seed():
 
         # ── Stores ─────────────────────────────────────────────
         print("Creating stores...")
-        stores = []
-        volume_multiplier = {}
+        store_objs = {}
         for store_def in STORES:
             store = Store(
                 name=store_def['name'],
@@ -138,161 +250,140 @@ def seed():
                 delivery_schedule=store_def['delivery_schedule'],
                 active=True,
             )
-            stores.append(store)
-            volume_multiplier[store_def['code']] = store_def['volume_multiplier']
-        db.session.add_all(stores)
-        db.session.flush()
+            db.session.add(store)
+            db.session.flush()
+            store_objs[store_def['code']] = store
 
-        # ── Inventory Items ────────────────────────────────────
+        # ── Load raw data ─────────────────────────────────────
+        print("Loading sales order CSVs...")
+        old_rows = _load_old_csv()
+        new_rows = _load_new_csv()
+        all_rows = old_rows + new_rows
+        print(f"  Old CSV: {len(old_rows)} order lines")
+        print(f"  New CSV: {len(new_rows)} order lines")
+
+        print("Loading par levels from Excel...")
+        par_levels = _load_par_levels()
+        print(f"  {len(par_levels)} par level entries")
+
+        # ── Discover all unique products ──────────────────────
+        all_product_names = set()
+        for _, product, _, _ in all_rows:
+            all_product_names.add(product)
+        # Also include products from par levels that may not appear in sales
+        for (_, product) in par_levels:
+            all_product_names.add(product)
+
+        # Remove empty strings
+        all_product_names.discard('')
+
+        print(f"\nTotal unique products: {len(all_product_names)}")
+
+        # ── Create Inventory Items ────────────────────────────
         print("Creating inventory items...")
-        items = []
-        for name, sku, category, uom, cpq, storage in ITEMS_CATALOG:
+        item_objs = {}
+        for name in sorted(all_product_names):
+            sku = _make_sku(name)
+            category = CATEGORY_MAP.get(name, 'Other')
             item = InventoryItem(
-                item_name=name, sku=sku, category=category,
-                unit_of_measure=uom, case_pack_quantity=cpq,
-                storage_type=storage, active=True,
+                item_name=name,
+                sku=sku,
+                category=category,
+                unit_of_measure='each',
+                case_pack_quantity=1,
+                storage_type='dry',
+                active=True,
             )
-            items.append(item)
-        db.session.add_all(items)
+            db.session.add(item)
+            item_objs[name] = item
         db.session.flush()
+        print(f"  Created {len(item_objs)} items")
 
-        # ── Store Item Settings ────────────────────────────────
-        print("Creating store item settings...")
-        all_settings = []
-        for store in stores:
-            mult = volume_multiplier[store.code]
-            for item in items:
-                defaults = SETTINGS_DEFAULTS[item.sku]
-                par = round(defaults[0] * mult)
-                safety = round(defaults[1] * mult)
-                reorder = round(defaults[2] * mult)
-                min_send = defaults[3]
-                rounding = defaults[4]
+        # ── Aggregate daily usage from sales orders ───────────
+        # Sum quantities per (store, product, date)
+        print("Aggregating daily usage from sales orders...")
+        daily_agg = defaultdict(float)
+        for store_code, product, order_date, qty in all_rows:
+            daily_agg[(store_code, product, order_date)] += qty
 
+        usage_count = 0
+        for (store_code, product, usage_date), total_qty in daily_agg.items():
+            store = store_objs.get(store_code)
+            item = item_objs.get(product)
+            if not store or not item:
+                continue
+
+            db.session.add(DailyUsage(
+                store_id=store.id,
+                item_id=item.id,
+                usage_date=usage_date,
+                quantity_used=total_qty,
+                source='sales_order_csv',
+            ))
+            usage_count += 1
+
+        db.session.flush()
+        print(f"  Created {usage_count} daily usage records")
+
+        # ── Store Item Settings (par levels) ──────────────────
+        print("Creating store item settings with par levels...")
+        settings_count = 0
+        # Create settings for every store-item combo
+        for name, item in item_objs.items():
+            for code, store in store_objs.items():
+                par = par_levels.get((code, name), 0)
                 setting = StoreItemSetting(
-                    store_id=store.id, item_id=item.id,
-                    par_level=par, safety_stock=safety,
-                    reorder_threshold=reorder, min_send_quantity=min_send,
-                    rounding_rule=rounding, active=True,
+                    store_id=store.id,
+                    item_id=item.id,
+                    par_level=par,
+                    safety_stock=0,
+                    reorder_threshold=0,
+                    min_send_quantity=0,
+                    rounding_rule='none',
+                    active=True,
                 )
-                all_settings.append(setting)
-        db.session.add_all(all_settings)
+                db.session.add(setting)
+                settings_count += 1
+
         db.session.flush()
+        print(f"  Created {settings_count} store item settings")
 
-        # ── Daily Usage (35 days of history) ───────────────────
-        print("Creating daily usage data (35 days)...")
-        today = date.today()
-        usage_rows = []
+        # ── Summary of par levels ─────────────────────────────
+        items_with_par = 0
+        items_without_par = 0
+        for name, item in item_objs.items():
+            has_par = False
+            for code in store_objs:
+                if par_levels.get((code, name), 0) > 0:
+                    has_par = True
+                    break
+            if has_par:
+                items_with_par += 1
+            else:
+                items_without_par += 1
 
-        for day_offset in range(35, 0, -1):
-            usage_date = today - timedelta(days=day_offset)
-            for store in stores:
-                mult = volume_multiplier[store.code]
-                for item in items:
-                    base = BASE_USAGE[item.sku] * mult
-                    # Add realistic variance (±30%)
-                    qty = max(0, round(base * random.uniform(0.7, 1.3), 1))
+        print(f"\n  Items with par levels: {items_with_par}")
+        print(f"  Items needing par levels: {items_without_par}")
+        if items_without_par > 0:
+            print("  Products needing par levels:")
+            for name in sorted(item_objs):
+                has_par = False
+                for code in store_objs:
+                    if par_levels.get((code, name), 0) > 0:
+                        has_par = True
+                        break
+                if not has_par:
+                    print(f"    - {name}")
 
-                    # Make some items have sparse data for K-Town to demo low-confidence
-                    if store.code == 'KTOWN' and item.sku == 'SYR-HAZ-750' and day_offset > 7:
-                        continue  # Skip older data — sparse usage history
-
-                    usage_rows.append(DailyUsage(
-                        store_id=store.id, item_id=item.id,
-                        usage_date=usage_date, quantity_used=qty,
-                        source='seed',
-                    ))
-
-        db.session.add_all(usage_rows)
-        db.session.flush()
-        print(f"  Created {len(usage_rows)} usage records.")
-
-        # ── Inventory Snapshots (yesterday) ────────────────────
-        print("Creating inventory snapshots...")
-        snapshot_date = today - timedelta(days=1)
-        snapshot_rows = []
-
-        for store in stores:
-            mult = volume_multiplier[store.code]
-            for item in items:
-                # Simulate on-hand as roughly par_level minus some usage
-                par = SETTINGS_DEFAULTS[item.sku][0] * mult
-                on_hand = max(0, round(par * random.uniform(0.2, 0.8), 1))
-
-                snapshot_rows.append(InventorySnapshot(
-                    store_id=store.id, item_id=item.id,
-                    snapshot_date=snapshot_date, quantity_on_hand=on_hand,
-                    source='seed',
-                ))
-
-        db.session.add_all(snapshot_rows)
-        db.session.flush()
-        print(f"  Created {len(snapshot_rows)} snapshot records.")
-
-        # ── Example Replenishment Plan (yesterday, completed) ──
-        print("Creating example replenishment plan...")
-        plan = ReplenishmentPlan(
-            plan_date=today - timedelta(days=1),
-            status='completed',
-            generated_at=datetime.now(timezone.utc) - timedelta(days=1),
-            generated_by_user_id=admin.id,
-            notes='Seed data example plan',
-        )
-        db.session.add(plan)
-        db.session.flush()
-
-        plan_lines = []
-        statuses_pool = ['delivered', 'delivered', 'delivered', 'delivered', 'shorted']
-
-        for store in stores:
-            mult = volume_multiplier[store.code]
-            for item in items:
-                par = SETTINGS_DEFAULTS[item.sku][0] * mult
-                base = BASE_USAGE[item.sku] * mult
-                recommended = max(0, round(par - par * random.uniform(0.2, 0.6) + base, 1))
-
-                status = random.choice(statuses_pool)
-                actual = recommended if status == 'delivered' else round(recommended * 0.5, 1)
-
-                # Determine confidence
-                confidence = 'high'
-                warnings = []
-                explanation = 'Based on 7-day average usage and current on-hand.'
-
-                if store.code == 'KTOWN' and item.sku == 'SYR-HAZ-750':
-                    confidence = 'low'
-                    warnings = ['sparse_usage_history', 'low_confidence']
-                    explanation = 'Low confidence due to limited recent usage history. Used par level fallback.'
-
-                if recommended > par * 2:
-                    warnings.append('unusual_recommendation')
-
-                plan_lines.append(ReplenishmentPlanLine(
-                    plan_id=plan.id, store_id=store.id, item_id=item.id,
-                    recommended_quantity=recommended, actual_quantity=actual,
-                    status=status, confidence_level=confidence,
-                    explanation_text=explanation, warning_flags=warnings,
-                    forecast_avg_daily_usage=base,
-                    forecast_on_hand=round(par * random.uniform(0.2, 0.5), 1),
-                    forecast_target=par,
-                    forecast_window_days=7,
-                    last_status_change_at=datetime.now(timezone.utc) - timedelta(hours=random.randint(1, 12)),
-                ))
-
-        db.session.add_all(plan_lines)
         db.session.commit()
-        print(f"  Created plan with {len(plan_lines)} lines.")
 
-        print("\nSeed complete!")
+        print(f"\nSeed complete!")
         print(f"  Users: {User.query.count()}")
         print(f"  Stores: {Store.query.count()}")
         print(f"  Items: {InventoryItem.query.count()}")
         print(f"  Store Item Settings: {StoreItemSetting.query.count()}")
         print(f"  Daily Usage Records: {DailyUsage.query.count()}")
-        print(f"  Inventory Snapshots: {InventorySnapshot.query.count()}")
-        print(f"  Plans: {ReplenishmentPlan.query.count()}")
-        print(f"  Plan Lines: {ReplenishmentPlanLine.query.count()}")
-        print("\nLogin credentials:")
+        print(f"\nLogin credentials:")
         print(f"  Admin: admin@yeems.com / {admin_pw}")
         print(f"  Warehouse: warehouse@yeems.com / {warehouse_pw}")
 

@@ -1,5 +1,5 @@
 """
-CSV import service for daily usage and inventory snapshots.
+CSV import service for daily usage, inventory snapshots, and actual orders.
 
 Validates rows, skips bad data, returns a summary.
 """
@@ -15,6 +15,7 @@ from warehouse_app.models.store import Store
 from warehouse_app.models.inventory_item import InventoryItem
 from warehouse_app.models.daily_usage import DailyUsage
 from warehouse_app.models.inventory_snapshot import InventorySnapshot
+from warehouse_app.models.actual_order import ActualOrder
 
 
 def _get_limit(key, fallback):
@@ -161,7 +162,7 @@ def import_daily_usage_csv(file_content, source='csv_import'):
             imported += 1
 
         except Exception as e:
-            errors.append(f'Row {i}: Unexpected error — {str(e)}')
+            errors.append(f'Row {i}: Unexpected error \u2014 {str(e)}')
             skipped += 1
 
     db.session.commit()
@@ -268,7 +269,112 @@ def import_inventory_snapshot_csv(file_content, source='csv_import'):
             imported += 1
 
         except Exception as e:
-            errors.append(f'Row {i}: Unexpected error — {str(e)}')
+            errors.append(f'Row {i}: Unexpected error \u2014 {str(e)}')
+            skipped += 1
+
+    db.session.commit()
+    return {'imported': imported, 'skipped': skipped, 'errors': errors}
+
+
+def import_actual_orders_csv(file_content, source='csv_import'):
+    """
+    Import actual store orders from CSV content.
+
+    Expected columns: store_code, sku, order_date, quantity_ordered, notes (optional)
+
+    Returns dict with imported, skipped, errors.
+    """
+    max_rows = _get_limit('CSV_MAX_ROWS', 10000)
+    max_quantity = _get_limit('CSV_MAX_QUANTITY', 999999)
+    max_note_len = _get_limit('CSV_MAX_NOTE_LENGTH', 500)
+
+    store_map = _get_store_map()
+    item_map = _get_item_map()
+
+    reader = csv.DictReader(io.StringIO(file_content))
+
+    missing = _validate_csv_headers(reader, ['store_code', 'sku', 'order_date', 'quantity_ordered'])
+    if missing:
+        return {
+            'imported': 0, 'skipped': 0,
+            'errors': [f'Missing required columns: {", ".join(missing)}'],
+        }
+
+    imported = 0
+    skipped = 0
+    errors = []
+
+    row_count = 0
+    for i, row in enumerate(reader, start=2):
+        if row_count >= max_rows:
+            errors.append(f'Row limit of {max_rows} exceeded. Remaining rows skipped.')
+            break
+        row_count += 1
+
+        try:
+            store_code = row.get('store_code', '').strip().upper()
+            sku = row.get('sku', '').strip().upper()
+            date_str = row.get('order_date', '').strip()
+            qty_str = row.get('quantity_ordered', '').strip()
+            notes = row.get('notes', '').strip() or None
+
+            store_id = store_map.get(store_code)
+            if store_id is None:
+                errors.append(f'Row {i}: Unknown store code "{store_code}"')
+                skipped += 1
+                continue
+
+            item_id = item_map.get(sku)
+            if item_id is None:
+                errors.append(f'Row {i}: Unknown SKU "{sku}"')
+                skipped += 1
+                continue
+
+            order_date = _parse_date(date_str)
+            if order_date is None:
+                errors.append(f'Row {i}: Invalid date "{date_str}"')
+                skipped += 1
+                continue
+
+            if order_date > date.today():
+                errors.append(f'Row {i}: Future date "{date_str}" not allowed')
+                skipped += 1
+                continue
+
+            try:
+                quantity = float(qty_str)
+                if not math.isfinite(quantity):
+                    raise ValueError('non-finite')
+                if quantity < 0:
+                    raise ValueError('negative')
+                if quantity > max_quantity:
+                    raise ValueError('too large')
+            except (ValueError, TypeError):
+                errors.append(f'Row {i}: Invalid quantity "{qty_str}"')
+                skipped += 1
+                continue
+
+            if notes and len(notes) > max_note_len:
+                notes = notes[:max_note_len]
+
+            existing = ActualOrder.query.filter_by(
+                store_id=store_id, item_id=item_id, order_date=order_date,
+            ).first()
+
+            if existing:
+                existing.quantity_ordered = quantity
+                existing.source = source
+                existing.notes = notes
+            else:
+                db.session.add(ActualOrder(
+                    store_id=store_id, item_id=item_id,
+                    order_date=order_date, quantity_ordered=quantity,
+                    source=source, notes=notes,
+                ))
+            imported += 1
+
+        except Exception as e:
+            errors.append(f'Row {i}: Unexpected error \u2014 {str(e)}')
             skipped += 1
 
     db.session.commit()

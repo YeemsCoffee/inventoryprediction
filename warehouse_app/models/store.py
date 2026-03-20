@@ -25,6 +25,7 @@ class Store(db.Model):
     daily_usages = db.relationship('DailyUsage', back_populates='store', lazy='dynamic')
     inventory_snapshots = db.relationship('InventorySnapshot', back_populates='store', lazy='dynamic')
     replenishment_plan_lines = db.relationship('ReplenishmentPlanLine', back_populates='store', lazy='dynamic')
+    actual_orders = db.relationship('ActualOrder', back_populates='store', lazy='dynamic')
 
     def __repr__(self):
         return f'<Store {self.code}>'

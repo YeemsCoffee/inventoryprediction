@@ -23,6 +23,8 @@
             <a href="{{ url_for('admin.items') }}">Items</a>
             <a href="{{ url_for('admin.store_item_settings') }}">Settings</a>
             <a href="{{ url_for('data_entry.daily_usage') }}">Data Entry</a>
+            <a href="{{ url_for('data_entry.actual_orders') }}">Actual Orders</a>
+            <a href="{{ url_for('data_entry.prediction_accuracy') }}">Accuracy</a>
             {% endif %}
             <a href="{{ url_for('auth.logout') }}">Logout ({{ current_user.full_name }})</a>
         </div>

@@ -8,3 +8,4 @@ from warehouse_app.models.inventory_snapshot import InventorySnapshot  # noqa: F
 from warehouse_app.models.replenishment_plan import ReplenishmentPlan  # noqa: F401
 from warehouse_app.models.replenishment_plan_line import ReplenishmentPlanLine  # noqa: F401
 from warehouse_app.models.audit_log import AuditLog  # noqa: F401
+from warehouse_app.models.actual_order import ActualOrder  # noqa: F401

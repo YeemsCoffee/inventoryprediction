@@ -202,6 +202,11 @@ def setting_edit(setting_id):
         return _save_setting(setting)
     stores = Store.query.filter_by(active=True).order_by(Store.name).all()
     items = InventoryItem.query.filter_by(active=True).order_by(InventoryItem.item_name).all()
+    # Ensure the setting's current item/store appear even if inactive
+    if setting.item and setting.item not in items:
+        items.append(setting.item)
+    if setting.store and setting.store not in stores:
+        stores.append(setting.store)
     return render_template('admin/store_item_setting_form.html',
                            setting=setting, stores=stores, items=items)
 

@@ -12,8 +12,8 @@ from warehouse_app.models.replenishment_plan_line import ReplenishmentPlanLine
 
 class TestConfigConstants:
     def test_config_has_usage_windows(self, app):
-        assert app.config['DEFAULT_USAGE_WINDOW_SHORT'] == 7
-        assert app.config['DEFAULT_USAGE_WINDOW_LONG'] == 14
+        assert app.config['DEFAULT_USAGE_WINDOW_SHORT'] == 30
+        assert app.config['DEFAULT_USAGE_WINDOW_LONG'] == 60
 
     def test_config_has_csv_limits(self, app):
         assert app.config['CSV_MAX_ROWS'] == 10000

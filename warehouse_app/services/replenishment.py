@@ -106,6 +106,12 @@ def calculate_recommendation(store_id, item_id, plan_date):
         elif rounding_rule == 'round_up_integer':
             explanations.append('Rounded up to whole unit')
 
+    # Always ensure the final quantity is a whole number
+    rounded_whole = needed.to_integral_value(rounding=ROUND_CEILING)
+    if rounded_whole != needed and needed > 0:
+        needed = rounded_whole
+        explanations.append('Rounded up to whole unit')
+
     # ── Step 7: Flag unusual recommendations ────────────────
     if needed > par_level * 2 and par_level > 0:
         warnings.append('unusual_recommendation')

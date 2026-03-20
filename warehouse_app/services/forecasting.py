@@ -208,8 +208,16 @@ def get_latest_on_hand(store_id, item_id, plan_date):
 
 # ── Confidence & on-hand assessment (shared) ─────────────────────────
 
-def _assess_on_hand(store_id, item_id, plan_date, confidence, explanations, warnings):
-    """Assess on-hand inventory. Returns (on_hand, on_hand_date, confidence)."""
+def _assess_on_hand(store_id, item_id, plan_date, confidence, explanations,
+                    warnings, avg_daily_usage=None):
+    """Assess on-hand inventory, projecting forward if snapshot is stale.
+
+    If the latest snapshot predates plan_date, the on-hand quantity is
+    reduced by avg_daily_usage for each intervening day so that
+    predictions for future dates reflect expected consumption.
+
+    Returns (on_hand, on_hand_date, confidence).
+    """
     on_hand, on_hand_date = get_latest_on_hand(store_id, item_id, plan_date)
 
     if on_hand is None:
@@ -218,7 +226,18 @@ def _assess_on_hand(store_id, item_id, plan_date, confidence, explanations, warn
         if confidence == 'high':
             confidence = 'medium'
     else:
-        explanations.append(f'On-hand: {on_hand} (as of {on_hand_date})')
+        days_since = (plan_date - on_hand_date).days
+        if days_since > 0 and avg_daily_usage and avg_daily_usage > 0:
+            projected = on_hand - (avg_daily_usage * days_since)
+            if projected < 0:
+                projected = Decimal('0')
+            explanations.append(
+                f'On-hand: {on_hand} (as of {on_hand_date}), '
+                f'projected to {projected} by {plan_date} '
+                f'({days_since}d × {avg_daily_usage}/d)')
+            on_hand = projected
+        else:
+            explanations.append(f'On-hand: {on_hand} (as of {on_hand_date})')
 
     return on_hand, on_hand_date, confidence
 
@@ -298,7 +317,8 @@ def _build_simple_forecast(store_id, item_id, plan_date,
     coverage = _compute_coverage(data_points, window_used)
 
     on_hand, on_hand_date, confidence = _assess_on_hand(
-        store_id, item_id, plan_date, confidence, explanations, warnings)
+        store_id, item_id, plan_date, confidence, explanations, warnings,
+        avg_daily_usage=avg_daily_usage)
 
     return {
         'avg_daily_usage': avg_daily_usage,
@@ -414,7 +434,8 @@ def _build_weighted_forecast(store_id, item_id, plan_date,
         warnings.append('low_confidence')
 
     on_hand, on_hand_date, confidence = _assess_on_hand(
-        store_id, item_id, plan_date, confidence, explanations, warnings)
+        store_id, item_id, plan_date, confidence, explanations, warnings,
+        avg_daily_usage=avg_daily_usage)
 
     return {
         'avg_daily_usage': avg_daily_usage,

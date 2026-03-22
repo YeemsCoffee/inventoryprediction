@@ -42,10 +42,22 @@ def _get_store_map():
     return {s.code.upper(): s.id for s in stores}
 
 
+def _get_store_name_map():
+    """Return dict mapping store name (uppercased) to store id."""
+    stores = Store.query.filter_by(active=True).all()
+    return {s.name.upper(): s.id for s in stores}
+
+
 def _get_item_map():
     """Return dict mapping SKU (uppercased) to item id."""
     items = InventoryItem.query.filter_by(active=True).all()
     return {i.sku.upper(): i.id for i in items}
+
+
+def _get_item_name_map():
+    """Return dict mapping item name (uppercased) to item id."""
+    items = InventoryItem.query.filter_by(active=True).all()
+    return {i.item_name.upper(): i.id for i in items}
 
 
 def _validate_csv_headers(reader, required_fields):
@@ -276,11 +288,48 @@ def import_inventory_snapshot_csv(file_content, source='csv_import'):
     return {'imported': imported, 'skipped': skipped, 'errors': errors}
 
 
+def _detect_actual_orders_format(fieldnames):
+    """Detect whether CSV uses sales-enquiry or legacy column names.
+
+    Returns a tuple (format, missing) where format is 'sales_enquiry' or
+    'legacy', and missing is a list of missing required columns.
+    """
+    if fieldnames is None:
+        return 'legacy', ['store_code', 'sku', 'order_date', 'quantity_ordered']
+
+    actual = {f.strip().lower() for f in fieldnames}
+
+    # Sales enquiry format: Order Date, Customer, Product, Quantity
+    sales_required = ['order date', 'customer', 'product', 'quantity']
+    sales_missing = [f for f in sales_required if f not in actual]
+    if not sales_missing:
+        return 'sales_enquiry', []
+
+    # Legacy format: store_code, sku, order_date, quantity_ordered
+    legacy_required = ['store_code', 'sku', 'order_date', 'quantity_ordered']
+    legacy_missing = [f for f in legacy_required if f not in actual]
+    if not legacy_missing:
+        return 'legacy', []
+
+    # Neither format matched fully — return whichever has fewer missing
+    if len(sales_missing) <= len(legacy_missing):
+        return 'sales_enquiry', sales_missing
+    return 'legacy', legacy_missing
+
+
 def import_actual_orders_csv(file_content, source='csv_import'):
     """
     Import actual store orders from CSV content.
 
-    Expected columns: store_code, sku, order_date, quantity_ordered, notes (optional)
+    Accepts two CSV formats:
+
+    Sales enquiry format (preferred):
+        Order No., Order Date, Required Date, Completed Date, Warehouse,
+        Customer, Customer Type, Product, Product Group, Status, Quantity,
+        Sub Total
+
+    Legacy format:
+        store_code, sku, order_date, quantity_ordered, notes (optional)
 
     Returns dict with imported, skipped, errors.
     """
@@ -288,17 +337,21 @@ def import_actual_orders_csv(file_content, source='csv_import'):
     max_quantity = _get_limit('CSV_MAX_QUANTITY', 999999)
     max_note_len = _get_limit('CSV_MAX_NOTE_LENGTH', 500)
 
-    store_map = _get_store_map()
-    item_map = _get_item_map()
-
     reader = csv.DictReader(io.StringIO(file_content))
 
-    missing = _validate_csv_headers(reader, ['store_code', 'sku', 'order_date', 'quantity_ordered'])
+    fmt, missing = _detect_actual_orders_format(reader.fieldnames)
     if missing:
         return {
             'imported': 0, 'skipped': 0,
             'errors': [f'Missing required columns: {", ".join(missing)}'],
         }
+
+    store_code_map = _get_store_map()
+    item_sku_map = _get_item_map()
+
+    if fmt == 'sales_enquiry':
+        store_name_map = _get_store_name_map()
+        item_name_map = _get_item_name_map()
 
     imported = 0
     skipped = 0
@@ -312,21 +365,43 @@ def import_actual_orders_csv(file_content, source='csv_import'):
         row_count += 1
 
         try:
-            store_code = row.get('store_code', '').strip().upper()
-            sku = row.get('sku', '').strip().upper()
-            date_str = row.get('order_date', '').strip()
-            qty_str = row.get('quantity_ordered', '').strip()
-            notes = row.get('notes', '').strip() or None
+            # Normalise keys to lower-case for consistent lookup
+            normalised = {k.strip().lower(): v for k, v in row.items()}
 
-            store_id = store_map.get(store_code)
+            if fmt == 'sales_enquiry':
+                customer = normalised.get('customer', '').strip().upper()
+                product = normalised.get('product', '').strip().upper()
+                date_str = normalised.get('order date', '').strip()
+                qty_str = normalised.get('quantity', '').strip()
+                notes = None  # sales enquiry has no notes column
+            else:
+                customer = normalised.get('store_code', '').strip().upper()
+                product = normalised.get('sku', '').strip().upper()
+                date_str = normalised.get('order_date', '').strip()
+                qty_str = normalised.get('quantity_ordered', '').strip()
+                notes = normalised.get('notes', '').strip() or None
+
+            # Resolve store
+            if fmt == 'sales_enquiry':
+                store_id = store_name_map.get(customer) or store_code_map.get(customer)
+            else:
+                store_id = store_code_map.get(customer)
+
             if store_id is None:
-                errors.append(f'Row {i}: Unknown store code "{store_code}"')
+                label = 'customer' if fmt == 'sales_enquiry' else 'store code'
+                errors.append(f'Row {i}: Unknown {label} "{customer}"')
                 skipped += 1
                 continue
 
-            item_id = item_map.get(sku)
+            # Resolve item
+            if fmt == 'sales_enquiry':
+                item_id = item_name_map.get(product) or item_sku_map.get(product)
+            else:
+                item_id = item_sku_map.get(product)
+
             if item_id is None:
-                errors.append(f'Row {i}: Unknown SKU "{sku}"')
+                label = 'product' if fmt == 'sales_enquiry' else 'SKU'
+                errors.append(f'Row {i}: Unknown {label} "{product}"')
                 skipped += 1
                 continue
 

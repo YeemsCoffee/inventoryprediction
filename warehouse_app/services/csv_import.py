@@ -64,8 +64,8 @@ def _validate_csv_headers(reader, required_fields):
     """Check that required headers are present. Returns list of missing fields."""
     if reader.fieldnames is None:
         return required_fields
-    actual = {f.strip().lower() for f in reader.fieldnames}
-    return [f for f in required_fields if f not in actual]
+    actual = {f.strip().strip('\ufeff').lower() for f in reader.fieldnames}
+    return [f for f in required_fields if f.lower() not in actual]
 
 
 def import_daily_usage_csv(file_content, source='csv_import'):
@@ -297,7 +297,7 @@ def _detect_actual_orders_format(fieldnames):
     if fieldnames is None:
         return 'legacy', ['store_code', 'sku', 'order_date', 'quantity_ordered']
 
-    actual = {f.strip().lower() for f in fieldnames}
+    actual = {f.strip().strip('\ufeff').lower() for f in fieldnames}
 
     # Sales enquiry format: Order Date, Customer, Product, Quantity
     sales_required = ['order date', 'customer', 'product', 'quantity']
@@ -337,7 +337,7 @@ def import_actual_orders_csv(file_content, source='csv_import'):
     max_quantity = _get_limit('CSV_MAX_QUANTITY', 999999)
     max_note_len = _get_limit('CSV_MAX_NOTE_LENGTH', 500)
 
-    reader = csv.DictReader(io.StringIO(file_content))
+    reader = csv.DictReader(io.StringIO(file_content.lstrip('\ufeff')))
 
     fmt, missing = _detect_actual_orders_format(reader.fieldnames)
     if missing:
@@ -366,7 +366,7 @@ def import_actual_orders_csv(file_content, source='csv_import'):
 
         try:
             # Normalise keys to lower-case for consistent lookup
-            normalised = {k.strip().lower(): v for k, v in row.items()}
+            normalised = {k.strip().strip('\ufeff').lower(): v for k, v in row.items()}
 
             if fmt == 'sales_enquiry':
                 customer = normalised.get('customer', '').strip().upper()

@@ -337,7 +337,9 @@ def import_actual_orders_csv(file_content, source='csv_import'):
     max_quantity = _get_limit('CSV_MAX_QUANTITY', 999999)
     max_note_len = _get_limit('CSV_MAX_NOTE_LENGTH', 500)
 
-    reader = csv.DictReader(io.StringIO(file_content.lstrip('\ufeff')))
+    clean_content = file_content.lstrip('\ufeff')
+    dialect = csv.Sniffer().sniff(clean_content[:2048], delimiters=',\t;|')
+    reader = csv.DictReader(io.StringIO(clean_content), dialect=dialect)
 
     fmt, missing = _detect_actual_orders_format(reader.fieldnames)
     if missing:

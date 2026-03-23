@@ -23,13 +23,6 @@ def load_sales_order_csv(filepath: str) -> pd.DataFrame:
         "OrderQuantity": "qty",
     })
     df = df[df["store"].isin(STORES)]
-    # Only include completed orders — exclude Deleted, Pending Approval, etc.
-    if "OrderStatus" in df.columns:
-        excluded = df[df["OrderStatus"] != "Completed"]
-        if len(excluded) > 0:
-            status_counts = excluded["OrderStatus"].value_counts().to_dict()
-            print(f"  Filtered out non-completed orders: {status_counts}")
-        df = df[df["OrderStatus"] == "Completed"]
     df["date"] = pd.to_datetime(df["date"], format="mixed")
     df["qty"] = pd.to_numeric(df["qty"], errors="coerce").fillna(0)
     df["product"] = df["product"].apply(_normalize_product)
@@ -46,13 +39,6 @@ def load_sales_enquiry_csv(filepath: str) -> pd.DataFrame:
         "Quantity": "qty",
     })
     df = df[df["store"].isin(STORES)]
-    # Only include completed orders — exclude Deleted, Pending Approval, etc.
-    if "Status" in df.columns:
-        excluded = df[df["Status"] != "Completed"]
-        if len(excluded) > 0:
-            status_counts = excluded["Status"].value_counts().to_dict()
-            print(f"  Filtered out non-completed orders: {status_counts}")
-        df = df[df["Status"] == "Completed"]
     df["date"] = pd.to_datetime(df["date"], format="mixed")
     df["qty"] = pd.to_numeric(df["qty"], errors="coerce").fillna(0)
     df["product"] = df["product"].apply(_normalize_product)

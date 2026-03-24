@@ -60,6 +60,22 @@ def _get_item_name_map():
     return {i.item_name.upper(): i.id for i in items}
 
 
+def _is_title_row(line):
+    """Return True if a CSV line looks like a title/banner rather than headers.
+
+    Heuristic: a title row has mostly empty trailing fields (commas with no
+    content) — e.g. ``"Sales Enquiry as of 03/14/2026,,,,,,,,,,,"``
+    """
+    stripped = line.strip()
+    if not stripped:
+        return True
+    parts = stripped.split(',')
+    if len(parts) <= 1:
+        return False
+    empty = sum(1 for p in parts if p.strip() == '')
+    return empty / len(parts) > 0.5
+
+
 def _validate_csv_headers(reader, required_fields):
     """Check that required headers are present. Returns list of missing fields."""
     if reader.fieldnames is None:
@@ -338,6 +354,14 @@ def import_actual_orders_csv(file_content, source='csv_import'):
     max_note_len = _get_limit('CSV_MAX_NOTE_LENGTH', 500)
 
     clean_content = file_content.lstrip('\ufeff')
+
+    # Skip title/banner rows that aren't real CSV headers (e.g.
+    # "Sales Enquiry as of 03/14/2026,,,,,,,,,,,")
+    lines = clean_content.split('\n')
+    while lines and _is_title_row(lines[0]):
+        lines.pop(0)
+    clean_content = '\n'.join(lines)
+
     dialect = csv.Sniffer().sniff(clean_content[:2048], delimiters=',\t;|')
     reader = csv.DictReader(io.StringIO(clean_content), dialect=dialect)
 

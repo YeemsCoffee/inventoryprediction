@@ -39,14 +39,13 @@ class TestRounding:
 
 
 class TestRecommendation:
-    def test_no_data_uses_par_level(self, db, sample_stores, sample_items, sample_settings):
-        """With no usage or snapshot data, recommendation uses par level."""
+    def test_no_data_returns_zero(self, db, sample_stores, sample_items, sample_settings):
+        """With no order history, recommendation should be zero."""
         store = sample_stores[0]
         item = sample_items[0]
         rec = calculate_recommendation(store.id, item.id, date.today())
         assert rec['confidence_level'] == 'low'
-        assert rec['recommended_quantity'] > 0
-        assert 'sparse_usage_history' in rec['warning_flags']
+        assert rec['recommended_quantity'] == 0
 
     def test_with_full_data(self, db, sample_stores, sample_items, sample_settings,
                             sample_usage, sample_snapshots):
@@ -69,6 +68,7 @@ class TestRecommendation:
     def test_min_send_quantity_enforced(self, db, sample_stores, sample_items):
         """When needed qty < min_send, it should be raised."""
         from warehouse_app.models.store_item_setting import StoreItemSetting
+        from warehouse_app.models.actual_order import ActualOrder
         store = sample_stores[0]
         item = sample_items[0]
 
@@ -84,6 +84,12 @@ class TestRecommendation:
             store_id=store.id, item_id=item.id,
             snapshot_date=date.today() - timedelta(days=1),
             quantity_on_hand=4, source='test',
+        ))
+        # Add an actual order so the item has demand history
+        db.session.add(ActualOrder(
+            store_id=store.id, item_id=item.id,
+            order_date=date.today() - timedelta(days=1),
+            quantity_ordered=1, source='test',
         ))
         db.session.commit()
 

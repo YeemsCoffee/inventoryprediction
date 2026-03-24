@@ -106,13 +106,13 @@ class TestReplenishmentService:
         assert 'forecast_target' in rec
         assert 'forecast_window_days' in rec
 
-    def test_replenishment_applies_par_level(self, db, sample_stores, sample_items, sample_settings):
-        """With no usage data, replenishment should fall back to par level."""
+    def test_replenishment_skips_no_order_history(self, db, sample_stores, sample_items, sample_settings):
+        """With no order history, replenishment should return zero (not fabricate demand)."""
         store = sample_stores[0]
         item = sample_items[0]
         rec = calculate_recommendation(store.id, item.id, date.today())
 
-        assert rec['recommended_quantity'] > 0
+        assert rec['recommended_quantity'] == 0
         assert rec['confidence_level'] == 'low'
 
     def test_replenishment_applies_rounding(self, db, sample_stores, sample_items,

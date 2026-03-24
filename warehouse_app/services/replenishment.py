@@ -79,10 +79,20 @@ def calculate_recommendation(store_id, item_id, plan_date):
     rounding_rule = setting.rounding_rule if setting else 'none'
     case_pack_qty = item.case_pack_quantity if item else 1
 
-    # If no usage data and no snapshot, fall back to par level as demand estimate
+    # If no usage data at all, skip — don't fabricate demand from par level.
+    # Items with zero order history should not appear on the picklist.
     if avg_daily_usage == 0 and forecast['data_points'] == 0:
-        avg_daily_usage = par_level
-        explanations.append('Using par level as fallback demand estimate')
+        return {
+            'recommended_quantity': Decimal('0'),
+            'confidence_level': confidence,
+            'explanation_text': 'No order history — skipped.',
+            'warning_flags': warnings,
+            'forecast_method': forecast.get('forecast_method', 'historical_simple_v1'),
+            'forecast_avg_daily_usage': Decimal('0'),
+            'forecast_on_hand': on_hand,
+            'forecast_target': Decimal('0'),
+            'forecast_window_days': forecast['window_days'],
+        }
 
     # ── Step 3: Calculate target ────────────────────────────
     target = max(par_level, avg_daily_usage + safety_stock)

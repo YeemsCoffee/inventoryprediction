@@ -419,15 +419,31 @@ def import_actual_orders_csv(file_content, source='csv_import'):
                 skipped += 1
                 continue
 
-            # Resolve item
+            # Resolve item — auto-create if missing in sales_enquiry format
             if fmt == 'sales_enquiry':
                 item_id = item_name_map.get(product) or item_sku_map.get(product)
+                if item_id is None:
+                    # Auto-create the item using the product name from the CSV
+                    product_original = normalised.get('product', '').strip()
+                    category = normalised.get('product group', '').strip() or ''
+                    # Generate a SKU from the product name
+                    sku = product_original.upper().replace(' ', '-')[:100]
+                    new_item = InventoryItem(
+                        item_name=product_original,
+                        sku=sku,
+                        category=category,
+                    )
+                    db.session.add(new_item)
+                    db.session.flush()  # get the new id without committing
+                    item_id = new_item.id
+                    # Update in-memory maps so later rows in this file find it
+                    item_name_map[product] = item_id
+                    item_sku_map[sku] = item_id
             else:
                 item_id = item_sku_map.get(product)
 
             if item_id is None:
-                label = 'product' if fmt == 'sales_enquiry' else 'SKU'
-                errors.append(f'Row {i}: Unknown {label} "{product}"')
+                errors.append(f'Row {i}: Unknown SKU "{product}"')
                 skipped += 1
                 continue
 

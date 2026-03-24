@@ -36,43 +36,50 @@ def _to_decimal(val):
 
 # ── Data access helpers ──────────────────────────────────────────────
 
-def get_average_orders(store_id, item_id, plan_date, days):
+def get_average_orders(store_id, item_id, plan_date, days=None):
     """
     Return simple arithmetic average daily demand over the window.
 
     Merges actual orders with daily usage: for each date in the window,
     actual orders take priority. Daily usage fills in dates with no orders.
 
+    Args:
+        days: Number of days to look back, or None for all history.
+
     Returns:
         (avg_demand: Decimal, record_count: int, source: str)
     """
-    start_date = plan_date - timedelta(days=days)
     end_date = plan_date - timedelta(days=1)
+    start_date = plan_date - timedelta(days=days) if days else None
 
     # Build a per-date quantity map: actual orders take priority
     demand_by_date = {}
 
     # Load daily usage first (lower priority)
-    usage_rows = db.session.query(
+    usage_q = db.session.query(
         DailyUsage.usage_date, DailyUsage.quantity_used,
     ).filter(
         DailyUsage.store_id == store_id,
         DailyUsage.item_id == item_id,
-        DailyUsage.usage_date >= start_date,
         DailyUsage.usage_date <= end_date,
-    ).all()
+    )
+    if start_date:
+        usage_q = usage_q.filter(DailyUsage.usage_date >= start_date)
+    usage_rows = usage_q.all()
     for row_date, qty in usage_rows:
         demand_by_date[row_date] = _to_decimal(qty)
 
     # Overlay actual orders (higher priority — overwrites usage for same date)
-    order_rows = db.session.query(
+    order_q = db.session.query(
         ActualOrder.order_date, ActualOrder.quantity_ordered,
     ).filter(
         ActualOrder.store_id == store_id,
         ActualOrder.item_id == item_id,
-        ActualOrder.order_date >= start_date,
         ActualOrder.order_date <= end_date,
-    ).all()
+    )
+    if start_date:
+        order_q = order_q.filter(ActualOrder.order_date >= start_date)
+    order_rows = order_q.all()
     has_orders = len(order_rows) > 0
     for row_date, qty in order_rows:
         demand_by_date[row_date] = _to_decimal(qty)
@@ -103,41 +110,48 @@ def get_average_usage(store_id, item_id, plan_date, days):
     return avg, count
 
 
-def get_weighted_average_orders(store_id, item_id, plan_date, days,
-                                decay_factor, dow_multiplier=0.0):
+def get_weighted_average_orders(store_id, item_id, plan_date, days=None,
+                                decay_factor=0.9, dow_multiplier=0.0):
     """
     Return exponentially-weighted average daily demand.
 
     Merges actual orders with daily usage: for each date in the window,
     actual orders take priority. Daily usage fills in dates with no orders.
 
+    Args:
+        days: Number of days to look back, or None for all history.
+
     Returns:
         (weighted_avg: Decimal, record_count: int, dow_matches: int, source: str)
     """
-    start_date = plan_date - timedelta(days=days)
     end_date = plan_date - timedelta(days=1)
+    start_date = plan_date - timedelta(days=days) if days else None
     plan_weekday = plan_date.weekday()
 
     # Build a per-date quantity map: actual orders take priority
     demand_by_date = {}
 
     # Load daily usage first (lower priority)
-    usage_rows = DailyUsage.query.filter(
+    usage_q = DailyUsage.query.filter(
         DailyUsage.store_id == store_id,
         DailyUsage.item_id == item_id,
-        DailyUsage.usage_date >= start_date,
         DailyUsage.usage_date <= end_date,
-    ).all()
+    )
+    if start_date:
+        usage_q = usage_q.filter(DailyUsage.usage_date >= start_date)
+    usage_rows = usage_q.all()
     for u in usage_rows:
         demand_by_date[u.usage_date] = _to_decimal(u.quantity_used)
 
     # Overlay actual orders (higher priority)
-    order_rows = ActualOrder.query.filter(
+    order_q = ActualOrder.query.filter(
         ActualOrder.store_id == store_id,
         ActualOrder.item_id == item_id,
-        ActualOrder.order_date >= start_date,
         ActualOrder.order_date <= end_date,
-    ).all()
+    )
+    if start_date:
+        order_q = order_q.filter(ActualOrder.order_date >= start_date)
+    order_rows = order_q.all()
     has_orders = len(order_rows) > 0
     for o in order_rows:
         demand_by_date[o.order_date] = _to_decimal(o.quantity_ordered)
@@ -267,15 +281,18 @@ def _build_simple_forecast(store_id, item_id, plan_date,
         store_id, item_id, plan_date, window_short)
     avg_long, count_long, source_long = get_average_orders(
         store_id, item_id, plan_date, window_long)
+    avg_all, count_all, source_all = get_average_orders(
+        store_id, item_id, plan_date)  # all history
 
-    data_source = source_short or source_long
+    data_source = source_short or source_long or source_all
+    _src_labels = {'actual_orders': 'actual orders', 'blended': 'orders + usage', 'daily_usage': 'usage history'}
 
     if count_short >= min_data_points:
         avg_daily_usage = avg_short
         window_used = window_short
         data_points = count_short
         data_source = source_short
-        source_label = {'actual_orders': 'actual orders', 'blended': 'orders + usage', 'daily_usage': 'usage history'}.get(source_short, 'usage history')
+        source_label = _src_labels.get(source_short, 'usage history')
         explanations.append(f'Based on {window_short}-day average {source_label}')
         confidence = 'high'
     elif count_long >= min_data_points:
@@ -283,23 +300,27 @@ def _build_simple_forecast(store_id, item_id, plan_date,
         window_used = window_long
         data_points = count_long
         data_source = source_long
-        source_label = {'actual_orders': 'actual orders', 'blended': 'orders + usage', 'daily_usage': 'usage history'}.get(source_long, 'usage history')
+        source_label = _src_labels.get(source_long, 'usage history')
         explanations.append(
             f'Based on {window_long}-day average {source_label} '
             f'(insufficient {window_short}-day data)')
         confidence = 'medium'
-    elif count_short > 0 or count_long > 0:
-        if count_long > count_short:
-            avg_daily_usage = avg_long
-            window_used = window_long
-            data_points = count_long
-            data_source = source_long
-        else:
-            avg_daily_usage = avg_short
-            window_used = window_short
-            data_points = count_short
-            data_source = source_short
-        explanations.append('Limited order history available')
+    elif count_all >= min_data_points:
+        avg_daily_usage = avg_all
+        window_used = 0  # signals "all history"
+        data_points = count_all
+        data_source = source_all
+        source_label = _src_labels.get(source_all, 'usage history')
+        explanations.append(
+            f'Based on all-history average {source_label} '
+            f'({count_all} data points)')
+        confidence = 'medium'
+    elif count_all > 0:
+        avg_daily_usage = avg_all
+        window_used = 0
+        data_points = count_all
+        data_source = source_all
+        explanations.append(f'Limited order history ({count_all} data points)')
         confidence = 'low'
         warnings.append('sparse_usage_history')
     else:
@@ -359,7 +380,12 @@ def _build_weighted_forecast(store_id, item_id, plan_date,
     avg_long, count_long, dow_long, source_long = get_weighted_average_orders(
         store_id, item_id, plan_date, window_long, decay_factor, dow_multiplier)
 
-    data_source = source_short or source_long
+    # All history
+    avg_all, count_all, dow_all, source_all = get_weighted_average_orders(
+        store_id, item_id, plan_date, None, decay_factor, dow_multiplier)
+
+    data_source = source_short or source_long or source_all
+    _src_labels = {'actual_orders': 'orders', 'blended': 'orders+usage', 'daily_usage': 'usage'}
 
     # ── Select best window ───────────────────────────────────
     if count_short >= min_data_points:
@@ -368,7 +394,7 @@ def _build_weighted_forecast(store_id, item_id, plan_date,
         data_points = count_short
         dow_matches = dow_short
         data_source = source_short
-        source_label = {'actual_orders': 'orders', 'blended': 'orders+usage', 'daily_usage': 'usage'}.get(source_short, 'usage')
+        source_label = _src_labels.get(source_short, 'usage')
         explanations.append(
             f'Weighted {window_short}-day avg {source_label} (decay={decay_factor})')
         confidence = 'high'
@@ -378,25 +404,29 @@ def _build_weighted_forecast(store_id, item_id, plan_date,
         data_points = count_long
         dow_matches = dow_long
         data_source = source_long
-        source_label = {'actual_orders': 'orders', 'blended': 'orders+usage', 'daily_usage': 'usage'}.get(source_long, 'usage')
+        source_label = _src_labels.get(source_long, 'usage')
         explanations.append(
             f'Weighted {window_long}-day avg {source_label} (decay={decay_factor}, '
             f'insufficient {window_short}-day data)')
         confidence = 'medium'
-    elif count_short > 0 or count_long > 0:
-        if count_long > count_short:
-            avg_daily_usage = avg_long
-            window_used = window_long
-            data_points = count_long
-            dow_matches = dow_long
-            data_source = source_long
-        else:
-            avg_daily_usage = avg_short
-            window_used = window_short
-            data_points = count_short
-            dow_matches = dow_short
-            data_source = source_short
-        explanations.append('Limited order history available (weighted)')
+    elif count_all >= min_data_points:
+        avg_daily_usage = avg_all
+        window_used = 0
+        data_points = count_all
+        dow_matches = dow_all
+        data_source = source_all
+        source_label = _src_labels.get(source_all, 'usage')
+        explanations.append(
+            f'Weighted all-history avg {source_label} (decay={decay_factor}, '
+            f'{count_all} data points)')
+        confidence = 'medium'
+    elif count_all > 0:
+        avg_daily_usage = avg_all
+        window_used = 0
+        data_points = count_all
+        dow_matches = dow_all
+        data_source = source_all
+        explanations.append(f'Limited order history ({count_all} data points, weighted)')
         confidence = 'low'
         warnings.append('sparse_usage_history')
     else:

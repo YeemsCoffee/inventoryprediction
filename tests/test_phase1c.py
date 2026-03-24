@@ -54,17 +54,17 @@ class TestForecastingService:
         store = sample_stores[0]
         item = sample_items[0]
 
-        # Create setting with custom 3-day window
+        # Create setting with custom 7-day window
         setting = StoreItemSetting(
             store_id=store.id, item_id=item.id,
             par_level=10, safety_stock=2, rounding_rule='none',
-            usage_window_days=3, active=True,
+            usage_window_days=7, active=True,
         )
         db.session.add(setting)
 
-        # Create 3 days of usage data
+        # Create 7 days of usage data (enough for high confidence)
         today = date.today()
-        for d in range(1, 4):
+        for d in range(1, 8):
             db.session.add(DailyUsage(
                 store_id=store.id, item_id=item.id,
                 usage_date=today - timedelta(days=d),
@@ -73,9 +73,9 @@ class TestForecastingService:
         db.session.commit()
 
         forecast = build_forecast(store.id, item.id, today)
-        # 3 data points in a 3-day window should be high confidence
-        assert forecast['window_days'] == 3
-        assert forecast['data_points'] == 3
+        # 7 data points in a 7-day window should hit the short window tier
+        assert forecast['window_days'] == 7
+        assert forecast['data_points'] == 7
 
     def test_forecast_explanations_are_populated(self, db, sample_stores, sample_items,
                                                    sample_settings, sample_usage, sample_snapshots):

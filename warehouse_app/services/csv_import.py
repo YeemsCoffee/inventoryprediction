@@ -428,14 +428,19 @@ def import_actual_orders_csv(file_content, source='csv_import'):
                     category = normalised.get('product group', '').strip() or ''
                     # Generate a SKU from the product name
                     sku = product_original.upper().replace(' ', '-')[:100]
-                    new_item = InventoryItem(
-                        item_name=product_original,
-                        sku=sku,
-                        category=category,
-                    )
-                    db.session.add(new_item)
-                    db.session.flush()  # get the new id without committing
-                    item_id = new_item.id
+                    # Check if an item with this SKU already exists (name may differ)
+                    existing_by_sku = InventoryItem.query.filter_by(sku=sku).first()
+                    if existing_by_sku:
+                        item_id = existing_by_sku.id
+                    else:
+                        new_item = InventoryItem(
+                            item_name=product_original,
+                            sku=sku,
+                            category=category,
+                        )
+                        db.session.add(new_item)
+                        db.session.flush()  # get the new id without committing
+                        item_id = new_item.id
                     # Update in-memory maps so later rows in this file find it
                     item_name_map[product] = item_id
                     item_sku_map[sku] = item_id

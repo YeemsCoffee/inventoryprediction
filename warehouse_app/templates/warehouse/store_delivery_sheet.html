@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block title %}{{ store.name }} Delivery - Warehouse Replenishment{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ store.name }} — Delivery Sheet</h1>
+    <div class="no-print" style="display:flex; gap:0.5rem; align-items:center;">
+        <form method="GET" class="filter-bar" style="margin-bottom:0;">
+            <input type="date" name="plan_date" value="{{ plan_date }}" onchange="this.form.submit()">
+        </form>
+        <button onclick="window.print()" class="btn btn-sm btn-secondary">Print</button>
+    </div>
+</div>
+
+{% if not plan %}
+<div class="empty-state"><p>No plan found for {{ plan_date }}.</p></div>
+{% elif lines|length == 0 %}
+<div class="empty-state"><p>No items for {{ store.name }} on {{ plan_date }}.</p></div>
+{% else %}
+<div class="meta-line">
+    <strong>{{ plan_date }}</strong>
+    <span class="badge badge-{{ plan.status }}">{{ plan.status }}</span>
+    <span>{{ lines|length }} items</span>
+</div>
+
+{% set total = lines|length if lines|length > 0 else 1 %}
+<div class="progress-bar" id="visual-progress">
+    <div class="progress-segment progress-segment-delivered" id="prog-delivered" style="width:{{ (progress.get('delivered', 0) / total * 100)|round(1) }}%"></div>
+    <div class="progress-segment progress-segment-loaded" id="prog-loaded" style="width:{{ (progress.get('loaded', 0) / total * 100)|round(1) }}%"></div>
+    <div class="progress-segment progress-segment-picked" id="prog-picked" style="width:{{ (progress.get('picked', 0) / total * 100)|round(1) }}%"></div>
+    <div class="progress-segment progress-segment-shorted" id="prog-shorted" style="width:{{ (progress.get('shorted', 0) / total * 100)|round(1) }}%"></div>
+    <div class="progress-segment progress-segment-pending" id="prog-pending" style="width:{{ (progress.get('pending', 0) / total * 100)|round(1) }}%"></div>
+</div>
+
+<div id="progress-badges" class="meta-line" style="margin-bottom:0.75rem;">
+    {% for status in ['pending', 'picked', 'loaded', 'delivered', 'shorted'] %}
+    {% if progress.get(status, 0) > 0 %}
+    <span class="badge badge-{{ status }}">{{ progress[status] }} {{ status }}</span>
+    {% endif %}
+    {% endfor %}
+</div>
+
+<div class="bulk-actions no-print">
+    <button class="btn btn-sm btn-primary" onclick="bulkAction('picked')">Mark Selected Picked</button>
+    <button class="btn btn-sm btn-success" onclick="bulkAction('loaded')">Mark Selected Loaded</button>
+    <button class="btn btn-sm btn-success" onclick="bulkAction('delivered')">Mark Selected Delivered</button>
+</div>
+
+<table id="delivery-table">
+    <thead>
+        <tr>
+            <th class="no-print" style="width:30px;"><input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"></th>
+            <th>Item</th>
+            <th>SKU</th>
+            <th style="text-align:right;">Rec. Qty</th>
+            <th style="text-align:right;" class="no-print">Actual Qty</th>
+            <th style="width:90px;">Status</th>
+            <th style="width:55px;">Conf.</th>
+            <th class="no-print">Note</th>
+            <th class="no-print" style="width:170px;">Actions</th>
+            <th>Warnings</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for line in lines %}
+        <tr id="line-{{ line.id }}" data-line-id="{{ line.id }}" class="line-row line-{{ line.status }}">
+            <td class="no-print"><input type="checkbox" class="line-checkbox" value="{{ line.id }}"></td>
+            <td><strong>{{ line.item.item_name }}</strong></td>
+            <td>{{ line.item.sku }}</td>
+            <td style="text-align:right; font-weight:700; font-size:1.05rem;">{{ line.recommended_quantity|int }}</td>
+            <td style="text-align:right;" class="no-print">
+                <input type="number" class="actual-qty-input" data-line-id="{{ line.id }}"
+                       value="{{ '%.1f'|format(line.actual_quantity) if line.actual_quantity is not none else '' }}"
+                       step="0.1" min="0"
+                       onchange="updateActualQty(this)">
+            </td>
+            <td>
+                <span class="badge badge-{{ line.status }}" id="status-badge-{{ line.id }}">{{ line.status }}</span>
+            </td>
+            <td>
+                <span class="confidence-{{ line.confidence_level }}">{{ line.confidence_level }}</span>
+            </td>
+            <td class="no-print">
+                <input type="text" class="note-input" data-line-id="{{ line.id }}"
+                       value="{{ line.picker_note or '' }}"
+                       placeholder="Note..." style="width:110px;"
+                       onchange="updateNote(this)" maxlength="500">
+            </td>
+            <td class="no-print">
+                <div class="action-btns">
+                    <button class="btn btn-sm btn-primary status-btn" onclick="setStatus({{ line.id }}, 'picked', this)">Pick</button>
+                    <button class="btn btn-sm btn-success status-btn" onclick="setStatus({{ line.id }}, 'loaded', this)">Load</button>
+                    <button class="btn btn-sm btn-success status-btn" onclick="setStatus({{ line.id }}, 'delivered', this)">Dlvr</button>
+                    <button class="btn btn-sm btn-danger status-btn" onclick="setStatus({{ line.id }}, 'shorted', this)">Short</button>
+                </div>
+            </td>
+            <td>
+                {% if line.warning_flags %}
+                {% for flag in line.warning_flags %}
+                <span class="badge badge-shorted" style="font-size:0.65rem;">{{ flag }}</span>
+                {% endfor %}
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="print-only" style="display:none; margin-top:1rem; font-size:0.8rem; color:#999;">
+    Printed {{ plan_date }} &middot; {{ store.name }} &middot; {{ lines|length }} items
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+var TOTAL_LINES = {{ lines|length if lines is defined else 0 }};
+var statusCounts = {{ progress | tojson if progress is defined else '{}' }};
+
+function updateProgressUI() {
+    var total = TOTAL_LINES || 1;
+    var order = ['delivered', 'loaded', 'picked', 'shorted', 'pending'];
+    for (var i = 0; i < order.length; i++) {
+        var el = document.getElementById('prog-' + order[i]);
+        if (el) el.style.width = ((statusCounts[order[i]] || 0) / total * 100).toFixed(1) + '%';
+    }
+    var badges = document.getElementById('progress-badges');
+    if (badges) {
+        var html = '';
+        var all = ['pending', 'picked', 'loaded', 'delivered', 'shorted'];
+        for (var j = 0; j < all.length; j++) {
+            var c = statusCounts[all[j]] || 0;
+            if (c > 0) html += '<span class="badge badge-' + all[j] + '">' + c + ' ' + all[j] + '</span>';
+        }
+        badges.innerHTML = html;
+    }
+}
+
+function flashRow(lineId, ok) {
+    var row = document.getElementById('line-' + lineId);
+    if (!row) return;
+    row.style.transition = 'background 0.3s';
+    row.style.background = ok ? '#d4edda' : '#f8d7da';
+    setTimeout(function() { row.style.background = ''; }, 800);
+}
+
+function setStatus(lineId, status, btn) {
+    if (btn) btn.disabled = true;
+    fetch('/warehouse/api/update-line', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({line_id: lineId, status: status})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (btn) btn.disabled = false;
+        if (data.success) {
+            var badge = document.getElementById('status-badge-' + lineId);
+            var oldStatus = badge.textContent.trim();
+            badge.textContent = data.status;
+            badge.className = 'badge badge-' + data.status;
+            var row = document.getElementById('line-' + lineId);
+            if (row) { row.className = 'line-row line-' + data.status; }
+            if (statusCounts[oldStatus]) statusCounts[oldStatus]--;
+            statusCounts[data.status] = (statusCounts[data.status] || 0) + 1;
+            updateProgressUI();
+            flashRow(lineId, true);
+            showToast(data.status.charAt(0).toUpperCase() + data.status.slice(1), 'success');
+        } else {
+            flashRow(lineId, false);
+            showToast(data.error || 'Error', 'error');
+        }
+    })
+    .catch(function(err) {
+        if (btn) btn.disabled = false;
+        flashRow(lineId, false);
+        showToast('Network error', 'error');
+    });
+}
+
+function updateActualQty(input) {
+    var lineId = input.dataset.lineId;
+    var val = input.value;
+    input.style.borderColor = '#ccc';
+    fetch('/warehouse/api/update-line', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({line_id: parseInt(lineId), actual_quantity: val ? parseFloat(val) : null, status: null})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            input.style.borderColor = '#28a745';
+            setTimeout(function() { input.style.borderColor = '#ccc'; }, 1500);
+        } else {
+            input.style.borderColor = '#dc3545';
+            showToast(data.error || 'Error', 'error');
+        }
+    })
+    .catch(function(err) {
+        input.style.borderColor = '#dc3545';
+        showToast('Network error', 'error');
+    });
+}
+
+function updateNote(input) {
+    var lineId = input.dataset.lineId;
+    input.style.borderColor = '#ccc';
+    fetch('/warehouse/api/update-line', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({line_id: parseInt(lineId), picker_note: input.value, status: null})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            input.style.borderColor = '#28a745';
+            setTimeout(function() { input.style.borderColor = '#ccc'; }, 1500);
+        } else {
+            input.style.borderColor = '#dc3545';
+        }
+    })
+    .catch(function(err) {
+        input.style.borderColor = '#dc3545';
+    });
+}
+
+function toggleSelectAll(checkbox) {
+    document.querySelectorAll('.line-checkbox').forEach(function(cb) { cb.checked = checkbox.checked; });
+}
+
+function bulkAction(status) {
+    var ids = Array.from(document.querySelectorAll('.line-checkbox:checked')).map(function(cb) { return parseInt(cb.value); });
+    if (ids.length === 0) { showToast('Select lines first', 'error'); return; }
+    if (!confirm('Update ' + ids.length + ' lines to "' + status + '"?')) return;
+    fetch('/warehouse/api/bulk-update', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({line_ids: ids, status: status})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            ids.forEach(function(id) {
+                var badge = document.getElementById('status-badge-' + id);
+                if (badge) {
+                    var old = badge.textContent.trim();
+                    if (statusCounts[old]) statusCounts[old]--;
+                    badge.textContent = status;
+                    badge.className = 'badge badge-' + status;
+                    var row = document.getElementById('line-' + id);
+                    if (row) { row.className = 'line-row line-' + status; }
+                    statusCounts[status] = (statusCounts[status] || 0) + 1;
+                    flashRow(id, true);
+                }
+            });
+            updateProgressUI();
+            document.querySelectorAll('.line-checkbox').forEach(function(cb) { cb.checked = false; });
+            document.getElementById('select-all').checked = false;
+            showToast(ids.length + ' lines updated', 'success');
+        } else {
+            showToast(data.error || 'Error', 'error');
+        }
+    })
+    .catch(function(err) { showToast('Network error', 'error'); });
+}
+</script>
+{% endblock %}

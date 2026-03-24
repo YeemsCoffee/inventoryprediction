@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Daily Usage - Warehouse Replenishment{% endblock %}
+{% block content %}
+<h1>Daily Usage Entry</h1>
+
+<div style="display:flex; gap:2rem; flex-wrap:wrap;">
+    <!-- Manual Entry -->
+    <div style="flex:1; min-width:320px;">
+        <h2 style="font-size:1.1rem; margin-bottom:1rem;">Manual Entry</h2>
+        <form method="POST" style="background:#fff; padding:1.5rem; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="form-group">
+                <label for="store_id">Store</label>
+                <select id="store_id" name="store_id" required>
+                    <option value="">-- Select --</option>
+                    {% for store in stores %}
+                    <option value="{{ store.id }}">{{ store.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="item_id">Item</label>
+                <select id="item_id" name="item_id" required>
+                    <option value="">-- Select --</option>
+                    {% for item in items %}
+                    <option value="{{ item.id }}">{{ item.item_name }} ({{ item.sku }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="usage_date">Usage Date</label>
+                <input type="date" id="usage_date" name="usage_date" required>
+            </div>
+
+            <div class="form-group">
+                <label for="quantity_used">Quantity Used</label>
+                <input type="number" id="quantity_used" name="quantity_used" step="0.1" min="0" required>
+            </div>
+
+            <div class="form-group">
+                <label for="notes">Notes (optional)</label>
+                <input type="text" id="notes" name="notes">
+            </div>
+
+            <button type="submit" class="btn btn-primary">Save</button>
+        </form>
+    </div>
+
+    <!-- CSV Import -->
+    <div style="flex:1; min-width:320px;">
+        <h2 style="font-size:1.1rem; margin-bottom:1rem;">CSV Import</h2>
+        <form method="POST" action="{{ url_for('data_entry.daily_usage_import') }}" enctype="multipart/form-data"
+              style="background:#fff; padding:1.5rem; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="form-group">
+                <label for="csv_file">Upload CSV</label>
+                <input type="file" id="csv_file" name="csv_file" accept=".csv" required>
+            </div>
+
+            <p style="font-size:0.85rem; color:#666; margin-bottom:1rem;">
+                Required columns: <code>store_code</code>, <code>sku</code>, <code>usage_date</code>, <code>quantity_used</code><br>
+                Optional: <code>notes</code><br>
+                Date formats: YYYY-MM-DD, MM/DD/YYYY
+            </p>
+
+            <button type="submit" class="btn btn-primary">Import</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

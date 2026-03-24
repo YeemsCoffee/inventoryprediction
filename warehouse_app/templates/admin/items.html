@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Inventory Items - Warehouse Replenishment{% endblock %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+    <h1>Inventory Items</h1>
+    <a href="{{ url_for('admin.item_new') }}" class="btn btn-primary">+ New Item</a>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Item Name</th>
+            <th>SKU</th>
+            <th>Category</th>
+            <th>UOM</th>
+            <th>Case Pack</th>
+            <th>Storage</th>
+            <th>Active</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in items %}
+        <tr>
+            <td>{{ item.item_name }}</td>
+            <td>{{ item.sku }}</td>
+            <td>{{ item.category }}</td>
+            <td>{{ item.unit_of_measure }}</td>
+            <td>{{ item.case_pack_quantity }}</td>
+            <td>{{ item.storage_type or '—' }}</td>
+            <td>{{ "Yes" if item.active else "No" }}</td>
+            <td><a href="{{ url_for('admin.item_edit', item_id=item.id) }}" class="btn btn-sm btn-secondary">Edit</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8">No items found.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

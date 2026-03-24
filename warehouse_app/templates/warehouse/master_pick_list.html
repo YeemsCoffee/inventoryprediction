@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Master Pick List - Warehouse Replenishment{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Master Pick List</h1>
+    <form method="GET" class="filter-bar no-print" style="margin-bottom:0;">
+        <input type="date" name="plan_date" value="{{ plan_date }}" onchange="this.form.submit()">
+    </form>
+</div>
+
+{% if not plan %}
+<div class="empty-state"><p>No plan found for {{ plan_date }}.</p></div>
+{% else %}
+<div class="filter-bar no-print">
+    <form method="GET" style="display:flex; gap:0.5rem; align-items:center;">
+        <input type="hidden" name="plan_date" value="{{ plan_date }}">
+        <select name="category" onchange="this.form.submit()">
+            <option value="">All Categories</option>
+            {% for cat in categories %}
+            <option value="{{ cat }}" {{ 'selected' if selected_category == cat }}>{{ cat }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" name="q" placeholder="Search item or SKU..." value="{{ search_query }}" style="width:200px;">
+        <button type="submit" class="btn btn-sm btn-secondary">Search</button>
+    </form>
+    <button onclick="window.print()" class="btn btn-sm btn-secondary">Print</button>
+    {% if plan.status == 'draft' %}
+    <form method="POST" action="{{ url_for('plans.delete', plan_id=plan.id) }}"
+          style="display:inline; margin-left:auto;"
+          onsubmit="return confirm('Delete the draft plan for {{ plan_date }}? This cannot be undone.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-sm btn-danger">Delete Plan</button>
+    </form>
+    {% endif %}
+</div>
+
+<div class="meta-line">
+    <strong>{{ plan_date }}</strong>
+    <span class="badge badge-{{ plan.status }}">{{ plan.status }}</span>
+    <span>{{ pick_items|length }} items</span>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Category</th>
+            <th>Item</th>
+            <th>SKU</th>
+            <th>UOM</th>
+            <th style="text-align:right;">Rec. Qty</th>
+            <th style="text-align:right;">Actual Qty</th>
+            <th style="text-align:center;">Stores</th>
+            <th>Status</th>
+            <th class="no-print"></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in pick_items %}
+        <tr class="pick-row" data-item-id="{{ item.id }}">
+            <td>{{ item.category }}</td>
+            <td><strong>{{ item.item_name }}</strong></td>
+            <td>{{ item.sku }}</td>
+            <td>{{ item.unit_of_measure }}</td>
+            <td style="text-align:right; font-weight:700; font-size:1.05rem;">{{ item.total_recommended|int }}</td>
+            <td style="text-align:right;">{{ item.total_actual|int if item.total_actual else "\u2014" }}</td>
+            <td style="text-align:center;">{{ item.store_count }}</td>
+            <td>
+                {% set ss = status_summary.get(item.id, {}) %}
+                {% if ss.get('pending', 0) > 0 %}<span class="badge badge-pending">{{ ss.pending }} pend</span> {% endif %}
+                {% if ss.get('picked', 0) > 0 %}<span class="badge badge-picked">{{ ss.picked }} pick</span> {% endif %}
+                {% if ss.get('loaded', 0) > 0 %}<span class="badge badge-loaded">{{ ss.loaded }} load</span> {% endif %}
+                {% if ss.get('delivered', 0) > 0 %}<span class="badge badge-delivered">{{ ss.delivered }} del</span> {% endif %}
+                {% if ss.get('shorted', 0) > 0 %}<span class="badge badge-shorted">{{ ss.shorted }} short</span> {% endif %}
+            </td>
+            <td class="no-print">
+                <button class="btn btn-sm btn-secondary toggle-breakdown" data-target="breakdown-{{ item.id }}" onclick="toggleBreakdown('breakdown-{{ item.id }}')">+</button>
+            </td>
+        </tr>
+        <tr id="breakdown-{{ item.id }}" class="breakdown-row" style="display:none;">
+            <td colspan="9" style="padding:0.5rem 1rem; background:#f8f9fa;">
+                <table style="box-shadow:none; margin:0; font-size:0.85rem;">
+                    <thead>
+                        <tr><th>Store</th><th style="text-align:right;">Rec.</th><th style="text-align:right;">Actual</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for bd in store_breakdown.get(item.id, []) %}
+                        <tr>
+                            <td>{{ bd.store_name }}</td>
+                            <td style="text-align:right;">{{ bd.recommended|int }}</td>
+                            <td style="text-align:right;">{{ bd.actual|int if bd.actual is not none else "\u2014" }}</td>
+                            <td><span class="badge badge-{{ bd.status }}">{{ bd.status }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9">No items found.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="print-only" style="display:none; margin-top:0.5rem; font-size:0.8rem; color:#999;">
+    Printed {{ plan_date }} &middot; Master Pick List &middot; {{ pick_items|length }} items
+</div>
+{% endif %}
+{% endblock %}

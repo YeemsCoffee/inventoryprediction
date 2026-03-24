@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if setting else "New" }} Store Item Setting - Warehouse Replenishment{% endblock %}
+{% block content %}
+<h1>{{ "Edit" if setting else "New" }} Store Item Setting</h1>
+
+<form method="POST" style="max-width:500px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form-group">
+        <label for="store_id">Store</label>
+        <select id="store_id" name="store_id" required>
+            <option value="">-- Select Store --</option>
+            {% for store in stores %}
+            <option value="{{ store.id }}" {{ 'selected' if setting and setting.store_id == store.id }}>{{ store.name }} ({{ store.code }})</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="item_id">Item</label>
+        <select id="item_id" name="item_id" required>
+            <option value="">-- Select Item --</option>
+            {% for item in items %}
+            <option value="{{ item.id }}" {{ 'selected' if setting and setting.item_id == item.id }}>{{ item.item_name }} ({{ item.sku }})</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="par_level">Par Level</label>
+        <input type="number" id="par_level" name="par_level" step="0.01" min="0"
+               value="{{ setting.par_level if setting else 0 }}">
+    </div>
+
+    <div class="form-group">
+        <label for="safety_stock">Safety Stock</label>
+        <input type="number" id="safety_stock" name="safety_stock" step="0.01" min="0"
+               value="{{ setting.safety_stock if setting else 0 }}">
+    </div>
+
+    <div class="form-group">
+        <label for="reorder_threshold">Reorder Threshold</label>
+        <input type="number" id="reorder_threshold" name="reorder_threshold" step="0.01" min="0"
+               value="{{ setting.reorder_threshold if setting else 0 }}">
+    </div>
+
+    <div class="form-group">
+        <label for="min_send_quantity">Min Send Quantity</label>
+        <input type="number" id="min_send_quantity" name="min_send_quantity" step="0.01" min="0"
+               value="{{ setting.min_send_quantity if setting else 0 }}">
+    </div>
+
+    <div class="form-group">
+        <label for="rounding_rule">Rounding Rule</label>
+        <select id="rounding_rule" name="rounding_rule">
+            <option value="none" {{ 'selected' if setting and setting.rounding_rule == 'none' }}>None</option>
+            <option value="round_up_integer" {{ 'selected' if setting and setting.rounding_rule == 'round_up_integer' }}>Round Up (Integer)</option>
+            <option value="round_up_case_pack" {{ 'selected' if setting and setting.rounding_rule == 'round_up_case_pack' }}>Round Up (Case Pack)</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="usage_window_days">Usage Window (days)</label>
+        <input type="number" id="usage_window_days" name="usage_window_days" min="1" max="90"
+               value="{{ setting.usage_window_days if setting and setting.usage_window_days else '' }}"
+               placeholder="Default ({{ config.get('DEFAULT_USAGE_WINDOW_SHORT', 7) }})">
+        <small style="color:#666;">Leave blank to use app default.</small>
+    </div>
+
+    <div class="form-group">
+        <label>
+            <input type="checkbox" name="active" {{ 'checked' if not setting or setting.active }}>
+            Active
+        </label>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a href="{{ url_for('admin.store_item_settings') }}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

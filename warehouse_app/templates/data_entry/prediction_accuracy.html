@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Prediction Accuracy - Warehouse Replenishment{% endblock %}
+{% block content %}
+<h1>Prediction vs Actual Orders</h1>
+
+<!-- Date picker -->
+<form method="GET" style="margin-bottom:1.5rem; display:flex; align-items:center; gap:1rem;">
+    <label for="plan_date"><strong>Plan Date:</strong></label>
+    <input type="date" id="plan_date" name="plan_date" value="{{ plan_date.isoformat() }}">
+    <button type="submit" class="btn btn-primary">View</button>
+</form>
+
+{% if not plan %}
+<div class="alert alert-warning">No replenishment plan found for {{ plan_date }}.</div>
+{% else %}
+
+<!-- Summary stats -->
+<div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:2rem;">
+    <div style="background:#fff; padding:1rem 1.5rem; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); flex:1; min-width:150px;">
+        <div style="font-size:0.8rem; color:#666;">Total Lines</div>
+        <div style="font-size:1.5rem; font-weight:bold;">{{ summary.total_lines }}</div>
+    </div>
+    <div style="background:#fff; padding:1rem 1.5rem; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); flex:1; min-width:150px;">
+        <div style="font-size:0.8rem; color:#666;">Exact Matches</div>
+        <div style="font-size:1.5rem; font-weight:bold; color:#28a745;">{{ summary.matched_lines }}</div>
+    </div>
+    <div style="background:#fff; padding:1rem 1.5rem; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); flex:1; min-width:150px;">
+        <div style="font-size:0.8rem; color:#666;">Over-predicted</div>
+        <div style="font-size:1.5rem; font-weight:bold; color:#ffc107;">{{ summary.over_predicted }}</div>
+    </div>
+    <div style="background:#fff; padding:1rem 1.5rem; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); flex:1; min-width:150px;">
+        <div style="font-size:0.8rem; color:#666;">Under-predicted</div>
+        <div style="font-size:1.5rem; font-weight:bold; color:#dc3545;">{{ summary.under_predicted }}</div>
+    </div>
+    <div style="background:#fff; padding:1rem 1.5rem; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); flex:1; min-width:150px;">
+        <div style="font-size:0.8rem; color:#666;">No Actual Data</div>
+        <div style="font-size:1.5rem; font-weight:bold; color:#999;">{{ summary.no_actual }}</div>
+    </div>
+    {% if summary.wmape is not none %}
+    <div style="background:#fff; padding:1rem 1.5rem; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); flex:1; min-width:150px;">
+        <div style="font-size:0.8rem; color:#666;">WMAPE</div>
+        <div style="font-size:1.5rem; font-weight:bold;">{{ "%.1f"|format(summary.wmape) }}%</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Comparison table -->
+{% if comparisons %}
+<div style="background:#fff; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse;">
+        <thead>
+            <tr style="background:#f8f9fa; border-bottom:2px solid #dee2e6;">
+                <th style="padding:0.75rem; text-align:left;">Store</th>
+                <th style="padding:0.75rem; text-align:left;">Item</th>
+                <th style="padding:0.75rem; text-align:right;">Predicted</th>
+                <th style="padding:0.75rem; text-align:right;">Actual</th>
+                <th style="padding:0.75rem; text-align:right;">Difference</th>
+                <th style="padding:0.75rem; text-align:right;">Error %</th>
+                <th style="padding:0.75rem; text-align:center;">Status</th>
+                <th style="padding:0.75rem; text-align:center;">Confidence</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in comparisons %}
+            <tr style="border-bottom:1px solid #eee;
+                {% if c.status == 'under' %}background:#fff5f5;
+                {% elif c.status == 'over' %}background:#fffbeb;
+                {% elif c.status == 'match' %}background:#f0fff4;
+                {% endif %}">
+                <td style="padding:0.75rem;">{{ c.store.name }}</td>
+                <td style="padding:0.75rem;">{{ c.item.item_name }}</td>
+                <td style="padding:0.75rem; text-align:right;">{{ "%.1f"|format(c.predicted) }}</td>
+                <td style="padding:0.75rem; text-align:right;">
+                    {% if c.actual is not none %}{{ "%.1f"|format(c.actual) }}{% else %}<span style="color:#999;">--</span>{% endif %}
+                </td>
+                <td style="padding:0.75rem; text-align:right; font-weight:bold;
+                    {% if c.diff is not none and c.diff > 0 %}color:#dc3545;
+                    {% elif c.diff is not none and c.diff < 0 %}color:#ffc107;
+                    {% elif c.diff is not none %}color:#28a745;
+                    {% endif %}">
+                    {% if c.diff is not none %}
+                        {{ "%+.1f"|format(c.diff) }}
+                    {% else %}
+                        <span style="color:#999;">--</span>
+                    {% endif %}
+                </td>
+                <td style="padding:0.75rem; text-align:right;">
+                    {% if c.pct_error is not none %}{{ "%.0f"|format(c.pct_error) }}%{% else %}<span style="color:#999;">--</span>{% endif %}
+                </td>
+                <td style="padding:0.75rem; text-align:center;">
+                    {% if c.status == 'match' %}
+                        <span style="background:#28a745; color:#fff; padding:2px 8px; border-radius:3px; font-size:0.8rem;">Match</span>
+                    {% elif c.status == 'under' %}
+                        <span style="background:#dc3545; color:#fff; padding:2px 8px; border-radius:3px; font-size:0.8rem;">Under</span>
+                    {% elif c.status == 'over' %}
+                        <span style="background:#ffc107; color:#000; padding:2px 8px; border-radius:3px; font-size:0.8rem;">Over</span>
+                    {% else %}
+                        <span style="background:#eee; color:#666; padding:2px 8px; border-radius:3px; font-size:0.8rem;">No Data</span>
+                    {% endif %}
+                </td>
+                <td style="padding:0.75rem; text-align:center;">
+                    {% if c.confidence == 'high' %}
+                        <span style="color:#28a745;">High</span>
+                    {% elif c.confidence == 'medium' %}
+                        <span style="color:#ffc107;">Med</span>
+                    {% else %}
+                        <span style="color:#dc3545;">Low</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">No plan lines to compare for this date.</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

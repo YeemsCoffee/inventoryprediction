@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Exceptions - Warehouse Replenishment{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Exceptions / Shortages</h1>
+    <form method="GET" class="filter-bar no-print" style="margin-bottom:0;">
+        <input type="date" name="plan_date" value="{{ plan_date }}" onchange="this.form.submit()">
+    </form>
+</div>
+
+{% if not plan %}
+<div class="empty-state"><p>No plan found for {{ plan_date }}.</p></div>
+{% else %}
+<div class="meta-line">
+    <strong>{{ plan_date }}</strong>
+    <span>{{ shorted|length }} shorted</span>
+    <span>{{ low_confidence|length }} low-confidence</span>
+    <span>{{ warning_lines|length }} warnings</span>
+    <span>{{ all_exceptions|length }} total</span>
+</div>
+
+{% if all_exceptions|length == 0 %}
+<div class="empty-state" style="background:#eafaf1; color:#155724;">
+    <p>No exceptions found. All lines are clean.</p>
+</div>
+{% else %}
+<table>
+    <thead>
+        <tr>
+            <th>Store</th>
+            <th>Item</th>
+            <th>SKU</th>
+            <th style="text-align:right;">Rec. Qty</th>
+            <th style="text-align:right;">Actual Qty</th>
+            <th>Status</th>
+            <th>Confidence</th>
+            <th>Warnings</th>
+            <th>Note</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for line in all_exceptions %}
+        <tr class="{% if line.status == 'shorted' %}line-shorted{% endif %}">
+            <td>{{ line.store.name }}</td>
+            <td><strong>{{ line.item.item_name }}</strong></td>
+            <td>{{ line.item.sku }}</td>
+            <td style="text-align:right; font-weight:700;">{{ "%.1f"|format(line.recommended_quantity) }}</td>
+            <td style="text-align:right;">{{ "%.1f"|format(line.actual_quantity) if line.actual_quantity is not none else "\u2014" }}</td>
+            <td><span class="badge badge-{{ line.status }}">{{ line.status }}</span></td>
+            <td><span class="confidence-{{ line.confidence_level }}">{{ line.confidence_level }}</span></td>
+            <td>
+                {% if line.warning_flags %}
+                {% for flag in line.warning_flags %}
+                <span class="badge badge-shorted" style="font-size:0.65rem;">{{ flag }}</span>
+                {% endfor %}
+                {% endif %}
+            </td>
+            <td style="font-size:0.85rem; color:#666;">{{ line.picker_note or '' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endif %}
+{% endblock %}

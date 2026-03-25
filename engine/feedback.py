@@ -18,7 +18,11 @@ FEEDBACK_FILE = "output/forecast_history.json"
 def load_feedback_history(filepath: str = FEEDBACK_FILE) -> list:
     if os.path.exists(filepath):
         with open(filepath, "r") as f:
-            return json.load(f)
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                print(f"WARNING: {filepath} is corrupted, starting fresh history")
+                return []
     return []
 
 

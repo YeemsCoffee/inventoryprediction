@@ -167,6 +167,11 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
     report = generate_accuracy_report(bt_results, weights)
     print(report)
 
+    # Export feedback report to Excel
+    result = export_feedback_to_excel(output_path=os.path.join(output_dir, "feedback_report.xlsx"))
+    if result:
+        print(f"\n  Excel report saved to: {result}")
+
     return predictions
 
 

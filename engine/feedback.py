@@ -211,6 +211,14 @@ def export_feedback_to_excel(
 
     completed = [h for h in history if h.get("actual") is not None]
 
+    if not completed:
+        # No actuals yet — write a placeholder sheet so the file isn't corrupted
+        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+            pd.DataFrame({"Status": ["No actual sales data recorded yet. Run --update-actuals first."]}).to_excel(
+                writer, sheet_name="Accuracy by Day", index=False
+            )
+        return output_path
+
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         # Sheet 1: Accuracy by item – one row per product, dates as columns
         if completed:

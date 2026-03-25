@@ -131,6 +131,9 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
             correction = corrections.get((store, product), 1.0)
             ensemble_preds *= correction
 
+            # Round to whole numbers — can't order fractional items
+            ensemble_preds = np.round(ensemble_preds).astype(int)
+
             predictions[(store, product)] = ensemble_preds
 
     # --- Step 6: Apply safety stock and generate output ---
@@ -157,7 +160,7 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
     forecast_entries = []
     for (store, product), preds in predictions.items():
         for i, d in enumerate(forecast_dates):
-            forecast_entries.append((store, product, d.strftime("%Y-%m-%d"), round(float(preds[i]), 2)))
+            forecast_entries.append((store, product, d.strftime("%Y-%m-%d"), int(preds[i])))
     record_forecasts_batch(forecast_entries)
 
     print(f"\n  Forecast period: {forecast_dates[0].strftime('%m/%d/%Y')} - {forecast_dates[-1].strftime('%m/%d/%Y')}")

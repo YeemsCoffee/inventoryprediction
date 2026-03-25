@@ -248,17 +248,13 @@ def export_feedback_to_excel(
             for entry in sorted(entries, key=lambda e: (e["store"], e["product"])):
                 predicted = entry["predicted"]
                 actual = entry["actual"]
-                denom = max(predicted, actual)
-                if denom > 0:
-                    accuracy_pct = round((1 - abs(predicted - actual) / denom) * 100, 1)
-                else:
-                    accuracy_pct = None  # both zero, no activity
+                mae = abs(int(predicted) - int(actual))
                 rows.append({
                     "Store": entry["store"],
                     "Product": entry["product"],
                     "Predicted": int(predicted),
                     "Actual": int(actual),
-                    "Accuracy (%)": accuracy_pct,
+                    "MAE": mae,
                 })
 
             day_df = pd.DataFrame(rows)

@@ -130,21 +130,13 @@ def generate_packing_list_csv(
 
             for product, (rounded, total) in sorted_products:
                 par = par_levels.get((store, product)) if show_par else None
-                capped_total = min(total, par) if par is not None else total
 
-                # Scale daily values down proportionally if capped
-                if par is not None and total > par and total > 0:
-                    scale = par / total
-                    daily_vals = np.round(rounded * scale).astype(int)
-                    # Ensure sum doesn't exceed par due to rounding
-                    diff = daily_vals.sum() - par
-                    if diff > 0:
-                        for i in range(diff):
-                            idx = np.argmax(daily_vals)
-                            daily_vals[idx] -= 1
-                    capped_total = daily_vals.sum()
+                # Cap each day's quantity at par (max the store can hold at once)
+                if par is not None:
+                    daily_vals = np.minimum(rounded, par)
                 else:
                     daily_vals = rounded
+                capped_total = daily_vals.sum()
 
                 row = [product]
                 for i, val in enumerate(daily_vals):
@@ -206,18 +198,12 @@ def print_packing_list(
     for product, (rounded, total) in sorted_products:
         par = par_levels.get((store, product)) if show_par else None
 
-        if par is not None and total > par and total > 0:
-            scale = par / total
-            daily_vals = np.round(rounded * scale).astype(int)
-            diff = daily_vals.sum() - par
-            if diff > 0:
-                for i in range(diff):
-                    idx = np.argmax(daily_vals)
-                    daily_vals[idx] -= 1
-            capped_total = daily_vals.sum()
+        # Cap each day's quantity at par (max the store can hold at once)
+        if par is not None:
+            daily_vals = np.minimum(rounded, par)
         else:
             daily_vals = rounded
-            capped_total = total
+        capped_total = daily_vals.sum()
 
         line = f"  {product:<28}"
         for i, val in enumerate(daily_vals):

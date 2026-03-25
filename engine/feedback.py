@@ -193,3 +193,78 @@ def generate_feedback_report(filepath: str = FEEDBACK_FILE) -> str:
 
     lines.append(f"\n{'=' * 70}")
     return "\n".join(lines)
+
+
+def export_feedback_to_excel(
+    output_path: str = "output/feedback_report.xlsx",
+    filepath: str = FEEDBACK_FILE,
+):
+    """Export all feedback history to a formatted Excel workbook."""
+    history = load_feedback_history(filepath)
+    if not history:
+        return None
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    # Build the detail DataFrame
+    df = pd.DataFrame(history)
+    col_order = ["store", "product", "date", "predicted", "actual", "error", "model_version", "recorded_at"]
+    col_order = [c for c in col_order if c in df.columns]
+    df = df[col_order]
+
+    # Rename columns for readability
+    rename = {
+        "store": "Store",
+        "product": "Product",
+        "date": "Forecast Date",
+        "predicted": "Predicted Qty",
+        "actual": "Actual Qty",
+        "error": "Error (Pred - Actual)",
+        "model_version": "Model Version",
+        "recorded_at": "Recorded At",
+    }
+    df = df.rename(columns=rename)
+
+    completed = [h for h in history if h.get("actual") is not None]
+
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+        # Sheet 1: All forecast entries
+        df.to_excel(writer, sheet_name="Forecast Details", index=False)
+
+        # Sheet 2: Summary by store-product (only if we have actuals)
+        if completed:
+            summary_rows = []
+            groups = {}
+            for entry in completed:
+                key = (entry["store"], entry["product"])
+                groups.setdefault(key, []).append(entry)
+
+            for (store, product), entries in sorted(groups.items()):
+                actuals_arr = np.array([e["actual"] for e in entries])
+                predicted_arr = np.array([e["predicted"] for e in entries])
+                metrics = compute_metrics(actuals_arr, predicted_arr)
+                corrections = compute_correction_factors(filepath)
+                factor = corrections.get((store, product), 1.0)
+                summary_rows.append({
+                    "Store": store,
+                    "Product": product,
+                    "Forecasts": len(entries),
+                    "MAE": metrics["mae"],
+                    "WMAPE (%)": metrics["wmape"],
+                    "Bias": round(metrics["bias"], 2),
+                    "Correction Factor": factor,
+                })
+
+            summary_df = pd.DataFrame(summary_rows)
+            summary_df.to_excel(writer, sheet_name="Accuracy Summary", index=False)
+
+        # Auto-fit column widths
+        for sheet_name in writer.sheets:
+            ws = writer.sheets[sheet_name]
+            for col_cells in ws.columns:
+                max_len = max(len(str(cell.value or "")) for cell in col_cells)
+                header_len = len(str(col_cells[0].value or ""))
+                width = max(max_len, header_len) + 2
+                ws.column_dimensions[col_cells[0].column_letter].width = width
+
+    return output_path

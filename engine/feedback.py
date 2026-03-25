@@ -106,8 +106,11 @@ def update_actuals(
 
         if len(match) > 0:
             entry["actual"] = float(match["qty"].sum())
-            entry["error"] = round(entry["predicted"] - entry["actual"], 2)
-            updated += 1
+        else:
+            # No sales record means zero sold
+            entry["actual"] = 0.0
+        entry["error"] = round(entry["predicted"] - entry["actual"], 2)
+        updated += 1
 
     save_feedback_history(history, filepath)
     return updated
@@ -209,26 +212,36 @@ def export_feedback_to_excel(
     completed = [h for h in history if h.get("actual") is not None]
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        # Sheet 1: Accuracy by item per day
+        # Sheet 1: Accuracy by item – one row per product, dates as columns
         if completed:
             accuracy_rows = []
             for entry in completed:
                 predicted = entry["predicted"]
                 actual = entry["actual"]
                 error = abs(predicted - actual)
-                accuracy_pct = round((1 - error / actual) * 100, 1) if actual else None
+                if actual > 0:
+                    accuracy_pct = round((1 - error / actual) * 100, 1)
+                else:
+                    accuracy_pct = 100.0 if predicted == 0 else 0.0
                 accuracy_rows.append({
                     "Store": entry["store"],
                     "Product": entry["product"],
                     "Date": entry["date"],
-                    "Predicted": predicted,
-                    "Actual": actual,
                     "Accuracy (%)": accuracy_pct,
                 })
 
             accuracy_df = pd.DataFrame(accuracy_rows)
-            accuracy_df.sort_values(["Product", "Date"], inplace=True)
-            accuracy_df.to_excel(writer, sheet_name="Accuracy by Day", index=False)
+            # Pivot: one row per store/product, one column per date
+            pivot_df = accuracy_df.pivot_table(
+                index=["Store", "Product"],
+                columns="Date",
+                values="Accuracy (%)",
+                aggfunc="mean",
+            )
+            # Sort date columns chronologically
+            pivot_df = pivot_df[sorted(pivot_df.columns)]
+            pivot_df = pivot_df.reset_index()
+            pivot_df.to_excel(writer, sheet_name="Accuracy by Day", index=False)
 
             # Sheet 2: Overall summary by store-product
             summary_rows = []

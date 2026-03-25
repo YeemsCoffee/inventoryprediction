@@ -287,6 +287,69 @@ def export_feedback_to_excel(
         summary_df = pd.DataFrame(summary_rows)
         summary_df.to_excel(writer, sheet_name="Accuracy Summary", index=False)
 
+        # Confidence tab: per store-product confidence rating
+        confidence_rows = []
+        for (store, product), entries in sorted(groups.items()):
+            n = len(entries)
+            actuals_arr = np.array([e["actual"] for e in entries])
+            predicted_arr = np.array([e["predicted"] for e in entries])
+            errors = np.abs(actuals_arr - predicted_arr)
+
+            mae = errors.mean()
+            avg_demand = actuals_arr.mean()
+            demand_std = actuals_arr.std() if n > 1 else 0
+            cv = (demand_std / avg_demand) if avg_demand > 0 else 0
+
+            # Score components (each 0-100, higher = more confident)
+            # 1. Data points: 3=low, 7=medium, 14+=high
+            data_score = min(100, (n / 14) * 100)
+
+            # 2. MAE relative to average demand
+            if avg_demand > 0:
+                error_ratio = mae / avg_demand
+                accuracy_score = max(0, (1 - error_ratio) * 100)
+            else:
+                accuracy_score = 50 if mae == 0 else 0
+
+            # 3. Demand stability (lower CV = more predictable)
+            stability_score = max(0, (1 - min(cv, 2) / 2) * 100)
+
+            # 4. Correction factor near 1.0 = model is well-calibrated
+            corrections = compute_correction_factors(filepath)
+            factor = corrections.get((store, product), 1.0)
+            calibration_score = max(0, (1 - abs(factor - 1.0)) * 100)
+
+            # Weighted overall confidence
+            overall = (
+                data_score * 0.30 +
+                accuracy_score * 0.35 +
+                stability_score * 0.20 +
+                calibration_score * 0.15
+            )
+
+            if overall >= 70:
+                level = "High"
+            elif overall >= 40:
+                level = "Medium"
+            else:
+                level = "Low"
+
+            confidence_rows.append({
+                "Store": store,
+                "Product": product,
+                "Confidence": level,
+                "Score": round(overall, 1),
+                "Data Points": n,
+                "Avg MAE": round(mae, 2),
+                "Avg Demand": round(avg_demand, 2),
+                "Demand CV": round(cv, 2),
+                "Correction Factor": factor,
+            })
+
+        conf_df = pd.DataFrame(confidence_rows)
+        conf_df.sort_values("Score", ascending=False, inplace=True)
+        conf_df.to_excel(writer, sheet_name="Confidence", index=False)
+
         # Auto-fit column widths
         for sheet_name in writer.sheets:
             ws = writer.sheets[sheet_name]

@@ -68,16 +68,32 @@ def record_forecasts_batch(
     """
     history = load_feedback_history(filepath)
     now = datetime.now().isoformat()
+
+    # Build lookup of existing entries to avoid duplicates
+    existing = set()
+    for h in history:
+        existing.add((h["store"], h["product"], h["date"]))
+
     for store, product, forecast_date, predicted_qty in entries:
-        history.append({
-            "store": store,
-            "product": product,
-            "date": forecast_date,
-            "predicted": round(predicted_qty, 2),
-            "actual": None,
-            "model_version": model_version,
-            "recorded_at": now,
-        })
+        key = (store, product, forecast_date)
+        if key in existing:
+            # Update the existing entry with the new prediction
+            for h in history:
+                if h["store"] == store and h["product"] == product and h["date"] == forecast_date:
+                    h["predicted"] = round(predicted_qty)
+                    h["recorded_at"] = now
+                    break
+        else:
+            history.append({
+                "store": store,
+                "product": product,
+                "date": forecast_date,
+                "predicted": round(predicted_qty),
+                "actual": None,
+                "model_version": model_version,
+                "recorded_at": now,
+            })
+            existing.add(key)
     save_feedback_history(history, filepath)
 
 

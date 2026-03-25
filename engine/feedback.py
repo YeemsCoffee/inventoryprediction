@@ -206,33 +206,31 @@ def export_feedback_to_excel(
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    # Build the detail DataFrame
-    df = pd.DataFrame(history)
-    col_order = ["store", "product", "date", "predicted", "actual", "error", "model_version", "recorded_at"]
-    col_order = [c for c in col_order if c in df.columns]
-    df = df[col_order]
-
-    # Rename columns for readability
-    rename = {
-        "store": "Store",
-        "product": "Product",
-        "date": "Forecast Date",
-        "predicted": "Predicted Qty",
-        "actual": "Actual Qty",
-        "error": "Error (Pred - Actual)",
-        "model_version": "Model Version",
-        "recorded_at": "Recorded At",
-    }
-    df = df.rename(columns=rename)
-
     completed = [h for h in history if h.get("actual") is not None]
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        # Sheet 1: All forecast entries
-        df.to_excel(writer, sheet_name="Forecast Details", index=False)
-
-        # Sheet 2: Summary by store-product (only if we have actuals)
+        # Sheet 1: Accuracy by item per day
         if completed:
+            accuracy_rows = []
+            for entry in completed:
+                predicted = entry["predicted"]
+                actual = entry["actual"]
+                error = abs(predicted - actual)
+                accuracy_pct = round((1 - error / actual) * 100, 1) if actual else None
+                accuracy_rows.append({
+                    "Store": entry["store"],
+                    "Product": entry["product"],
+                    "Date": entry["date"],
+                    "Predicted": predicted,
+                    "Actual": actual,
+                    "Accuracy (%)": accuracy_pct,
+                })
+
+            accuracy_df = pd.DataFrame(accuracy_rows)
+            accuracy_df.sort_values(["Product", "Date"], inplace=True)
+            accuracy_df.to_excel(writer, sheet_name="Accuracy by Day", index=False)
+
+            # Sheet 2: Overall summary by store-product
             summary_rows = []
             groups = {}
             for entry in completed:

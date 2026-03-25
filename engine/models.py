@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from config.products import FORECAST_CONFIG
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -146,11 +147,13 @@ class GBTModel:
 
     def __init__(self):
         self.model = GradientBoostingRegressor(
-            n_estimators=100,
-            max_depth=4,
-            learning_rate=0.1,
-            subsample=0.8,
-            min_samples_leaf=3,
+            loss=FORECAST_CONFIG["gbt_loss"],
+            alpha=FORECAST_CONFIG["gbt_huber_alpha"],
+            n_estimators=FORECAST_CONFIG["gbt_n_estimators"],
+            max_depth=FORECAST_CONFIG["gbt_max_depth"],
+            learning_rate=FORECAST_CONFIG["gbt_learning_rate"],
+            subsample=FORECAST_CONFIG["gbt_subsample"],
+            min_samples_leaf=FORECAST_CONFIG["gbt_min_samples_leaf"],
             random_state=42,
         )
         self.is_fitted = False

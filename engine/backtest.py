@@ -116,6 +116,7 @@ def walk_forward_backtest(
 def evaluate_models(backtest_results: pd.DataFrame) -> dict:
     """
     Evaluate each model's performance and determine optimal ensemble weights.
+    Uses MAE (primary metric) for weight optimization. MAPE is secondary/display only.
     """
     if backtest_results.empty:
         return {"dow": 0.33, "exp": 0.34, "gbt": 0.33}
@@ -130,11 +131,11 @@ def evaluate_models(backtest_results: pd.DataFrame) -> dict:
             )
             model_metrics[model_name] = metrics
 
-    # Determine weights based on inverse WMAPE
+    # Determine weights based on inverse MAE (lower MAE = higher weight)
     weights = {}
     for name, metrics in model_metrics.items():
-        wmape = metrics.get("wmape", 100)
-        weights[name] = 1.0 / max(wmape, 1)
+        mae = metrics.get("mae", 100)
+        weights[name] = 1.0 / max(mae, 0.01)
 
     # Add GBT with default weight (can't easily backtest without features here)
     weights["gbt"] = max(weights.values()) * 1.2  # slight boost for GBT
@@ -167,7 +168,8 @@ def generate_accuracy_report(
         )
         name_map = {"dow": "Day-of-Week", "exp": "Exponential Smoothing"}
         lines.append(f"\n  {name_map.get(model_name, model_name)}:")
-        lines.append(f"    MAE:    {metrics['mae']}")
+        lines.append(f"    MAE:    {metrics['mae']}  (primary)")
+        lines.append(f"    MAPE:   {metrics['mape']}%  (secondary)" if metrics.get('mape') else "    MAPE:   N/A (no non-zero actuals)")
         lines.append(f"    WMAPE:  {metrics['wmape']}%")
         lines.append(f"    Bias:   {metrics['bias']:+.2f} ({'over' if metrics['bias'] > 0 else 'under'}-forecasting)")
         lines.append(f"    Within 1 unit: {metrics['accuracy_within_1']}% of predictions")
@@ -181,7 +183,8 @@ def generate_accuracy_report(
 
     ens_metrics = compute_metrics(br["actual"].values, br["pred_ensemble"].values)
     lines.append(f"\n  Ensemble (weighted):")
-    lines.append(f"    MAE:    {ens_metrics['mae']}")
+    lines.append(f"    MAE:    {ens_metrics['mae']}  (primary)")
+    lines.append(f"    MAPE:   {ens_metrics['mape']}%  (secondary)" if ens_metrics.get('mape') else "    MAPE:   N/A")
     lines.append(f"    WMAPE:  {ens_metrics['wmape']}%")
     lines.append(f"    Bias:   {ens_metrics['bias']:+.2f}")
     lines.append(f"    Within 1 unit: {ens_metrics['accuracy_within_1']}% of predictions")

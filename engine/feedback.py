@@ -49,17 +49,35 @@ def record_forecast(
     model_version: str = "v2",
     filepath: str = FEEDBACK_FILE,
 ):
-    """Record a forecast for later comparison."""
+    """Record a single forecast (loads/saves each call — prefer record_forecasts_batch)."""
+    record_forecasts_batch(
+        [(store, product, forecast_date, predicted_qty)],
+        model_version=model_version,
+        filepath=filepath,
+    )
+
+
+def record_forecasts_batch(
+    entries: list,
+    model_version: str = "v2",
+    filepath: str = FEEDBACK_FILE,
+):
+    """Record multiple forecasts in a single load/save cycle.
+
+    entries: list of (store, product, forecast_date, predicted_qty) tuples.
+    """
     history = load_feedback_history(filepath)
-    history.append({
-        "store": store,
-        "product": product,
-        "date": forecast_date,
-        "predicted": round(predicted_qty, 2),
-        "actual": None,
-        "model_version": model_version,
-        "recorded_at": datetime.now().isoformat(),
-    })
+    now = datetime.now().isoformat()
+    for store, product, forecast_date, predicted_qty in entries:
+        history.append({
+            "store": store,
+            "product": product,
+            "date": forecast_date,
+            "predicted": round(predicted_qty, 2),
+            "actual": None,
+            "model_version": model_version,
+            "recorded_at": now,
+        })
     save_feedback_history(history, filepath)
 
 

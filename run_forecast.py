@@ -26,7 +26,7 @@ from engine.features import build_feature_matrix
 from engine.models import DayOfWeekModel, ExpSmoothingModel, GBTModel, EnsembleForecaster
 from engine.backtest import walk_forward_backtest, evaluate_models, generate_accuracy_report
 from engine.feedback import (
-    compute_correction_factors, record_forecast, update_actuals,
+    compute_correction_factors, record_forecasts_batch, update_actuals,
     generate_feedback_report,
 )
 from engine.packing import apply_safety_stock, generate_packing_list_csv, print_packing_list, load_par_levels
@@ -153,10 +153,12 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
     print()
     filepaths = generate_packing_list_csv(predictions, forecast_dates, stores, output_dir, par_levels=par_levels)
 
-    # Record forecasts for feedback loop
+    # Record forecasts for feedback loop (single batch write)
+    forecast_entries = []
     for (store, product), preds in predictions.items():
         for i, d in enumerate(forecast_dates):
-            record_forecast(store, product, d.strftime("%Y-%m-%d"), round(float(preds[i]), 2))
+            forecast_entries.append((store, product, d.strftime("%Y-%m-%d"), round(float(preds[i]), 2)))
+    record_forecasts_batch(forecast_entries)
 
     print(f"\n  Forecast period: {forecast_dates[0].strftime('%m/%d/%Y')} - {forecast_dates[-1].strftime('%m/%d/%Y')}")
     print(f"  Output saved to: {output_dir}/")

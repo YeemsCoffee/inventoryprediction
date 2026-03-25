@@ -1,7 +1,5 @@
 __pycache__/
 *.pyc
-output/forecast_history.json
-output/feedback_report.xlsx
 output/packing_list_*.csv
 
 # Warehouse app

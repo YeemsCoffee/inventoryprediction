@@ -27,7 +27,7 @@ from engine.models import DayOfWeekModel, ExpSmoothingModel, GBTModel, EnsembleF
 from engine.backtest import walk_forward_backtest, evaluate_models, generate_accuracy_report
 from engine.feedback import (
     compute_correction_factors, record_forecasts_batch, update_actuals,
-    generate_feedback_report,
+    generate_feedback_report, export_feedback_to_excel,
 )
 from engine.packing import apply_safety_stock, generate_packing_list_csv, print_packing_list, load_par_levels
 from config.products import STORES
@@ -248,6 +248,10 @@ def run_update_actuals(data_dir: str = "."):
     report = generate_feedback_report()
     print(report)
 
+    result = export_feedback_to_excel(output_path="output/feedback_report.xlsx")
+    if result:
+        print(f"\n  Excel report saved to: {result}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Inventory Prediction System v2")
@@ -257,6 +261,7 @@ def main():
     parser.add_argument("--backtest", action="store_true", help="Run backtest only")
     parser.add_argument("--update-actuals", action="store_true", help="Update feedback with actual sales")
     parser.add_argument("--feedback-report", action="store_true", help="Show feedback loop report")
+    parser.add_argument("--export-feedback", action="store_true", help="Export feedback history to Excel")
 
     args = parser.parse_args()
 
@@ -266,6 +271,13 @@ def main():
         run_update_actuals(args.data_dir)
     elif args.feedback_report:
         print(generate_feedback_report())
+    elif args.export_feedback:
+        out = os.path.join(args.output_dir, "feedback_report.xlsx")
+        result = export_feedback_to_excel(output_path=out)
+        if result:
+            print(f"Feedback report exported to: {result}")
+        else:
+            print("No feedback history to export.")
     else:
         run_forecast(args.data_dir, args.days, args.output_dir)
 

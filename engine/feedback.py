@@ -248,12 +248,11 @@ def export_feedback_to_excel(
             for entry in sorted(entries, key=lambda e: (e["store"], e["product"])):
                 predicted = entry["predicted"]
                 actual = entry["actual"]
-                if actual > 0:
-                    accuracy_pct = round((1 - abs(predicted - actual) / actual) * 100, 1)
-                elif predicted == 0:
-                    accuracy_pct = None  # both zero, no activity
+                denom = max(predicted, actual)
+                if denom > 0:
+                    accuracy_pct = round((1 - abs(predicted - actual) / denom) * 100, 1)
                 else:
-                    accuracy_pct = 0.0
+                    accuracy_pct = None  # both zero, no activity
                 rows.append({
                     "Store": entry["store"],
                     "Product": entry["product"],

@@ -6,6 +6,7 @@ Stores accuracy history for continuous improvement.
 
 import json
 import os
+import tempfile
 import numpy as np
 import pandas as pd
 from datetime import datetime
@@ -28,8 +29,16 @@ def load_feedback_history(filepath: str = FEEDBACK_FILE) -> list:
 
 def save_feedback_history(history: list, filepath: str = FEEDBACK_FILE):
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    with open(filepath, "w") as f:
-        json.dump(history, f, indent=2, default=str)
+    # Write to temp file first, then rename to avoid corruption from Ctrl+C
+    dir_name = os.path.dirname(filepath) or "."
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(history, f, indent=2, default=str)
+        os.replace(tmp_path, filepath)
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
 
 
 def record_forecast(

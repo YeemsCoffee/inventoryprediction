@@ -131,14 +131,15 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
             correction = corrections.get((store, product), 1.0)
             ensemble_preds *= correction
 
-            # Round to whole numbers — can't order fractional items
-            ensemble_preds = np.round(ensemble_preds).astype(int)
-
             predictions[(store, product)] = ensemble_preds
 
     # --- Step 6: Apply safety stock and generate output ---
     print("\n[6/6] Applying safety stock and generating packing lists...")
     predictions = apply_safety_stock(predictions, daily)
+
+    # Round to whole numbers — can't order fractional items
+    for key in predictions:
+        predictions[key] = np.round(predictions[key]).astype(int)
 
     # Load par levels if the file exists
     par_xlsx = os.path.join(data_dir, "Store Max Items.xlsx")

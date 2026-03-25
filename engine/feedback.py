@@ -111,9 +111,6 @@ def update_actuals(
 
     updated = 0
     for entry in history:
-        if entry["actual"] is not None:
-            continue
-
         match = actuals_df[
             (actuals_df["store"] == entry["store"]) &
             (actuals_df["product"] == entry["product"]) &
@@ -121,12 +118,14 @@ def update_actuals(
         ]
 
         if len(match) > 0:
-            entry["actual"] = float(match["qty"].sum())
+            new_actual = float(match["qty"].sum())
         else:
-            # No sales record means zero sold
-            entry["actual"] = 0.0
-        entry["error"] = round(entry["predicted"] - entry["actual"], 2)
-        updated += 1
+            new_actual = 0.0
+
+        if entry["actual"] != new_actual:
+            entry["actual"] = new_actual
+            entry["error"] = round(entry["predicted"] - entry["actual"], 2)
+            updated += 1
 
     save_feedback_history(history, filepath)
     return updated

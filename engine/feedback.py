@@ -236,62 +236,62 @@ def export_feedback_to_excel(
         return output_path
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        # Sheet 1: Accuracy by item – one row per product, dates as columns
-        if completed:
-            accuracy_rows = []
-            for entry in completed:
+        # Group entries by date
+        by_date = {}
+        for entry in completed:
+            by_date.setdefault(entry["date"], []).append(entry)
+
+        # One tab per date, sorted chronologically
+        for date_str in sorted(by_date.keys()):
+            entries = by_date[date_str]
+            rows = []
+            for entry in sorted(entries, key=lambda e: (e["store"], e["product"])):
                 predicted = entry["predicted"]
                 actual = entry["actual"]
-                error = abs(predicted - actual)
                 if actual > 0:
-                    accuracy_pct = round((1 - error / actual) * 100, 1)
+                    accuracy_pct = round((1 - abs(predicted - actual) / actual) * 100, 1)
+                elif predicted == 0:
+                    accuracy_pct = None  # both zero, no activity
                 else:
-                    accuracy_pct = 100.0 if predicted == 0 else 0.0
-                accuracy_rows.append({
+                    accuracy_pct = 0.0
+                rows.append({
                     "Store": entry["store"],
                     "Product": entry["product"],
-                    "Date": entry["date"],
+                    "Predicted": int(predicted),
+                    "Actual": int(actual),
                     "Accuracy (%)": accuracy_pct,
                 })
 
-            accuracy_df = pd.DataFrame(accuracy_rows)
-            # Pivot: one row per store/product, one column per date
-            pivot_df = accuracy_df.pivot_table(
-                index=["Store", "Product"],
-                columns="Date",
-                values="Accuracy (%)",
-                aggfunc="mean",
-            )
-            # Sort date columns chronologically
-            pivot_df = pivot_df[sorted(pivot_df.columns)]
-            pivot_df = pivot_df.reset_index()
-            pivot_df.to_excel(writer, sheet_name="Accuracy by Day", index=False)
+            day_df = pd.DataFrame(rows)
+            # Use MM-DD format for tab name (sheet names max 31 chars)
+            tab_name = pd.Timestamp(date_str).strftime("%m-%d")
+            day_df.to_excel(writer, sheet_name=tab_name, index=False)
 
-            # Sheet 2: Overall summary by store-product
-            summary_rows = []
-            groups = {}
-            for entry in completed:
-                key = (entry["store"], entry["product"])
-                groups.setdefault(key, []).append(entry)
+        # Final tab: Accuracy Summary across all dates
+        summary_rows = []
+        groups = {}
+        for entry in completed:
+            key = (entry["store"], entry["product"])
+            groups.setdefault(key, []).append(entry)
 
-            for (store, product), entries in sorted(groups.items()):
-                actuals_arr = np.array([e["actual"] for e in entries])
-                predicted_arr = np.array([e["predicted"] for e in entries])
-                metrics = compute_metrics(actuals_arr, predicted_arr)
-                corrections = compute_correction_factors(filepath)
-                factor = corrections.get((store, product), 1.0)
-                summary_rows.append({
-                    "Store": store,
-                    "Product": product,
-                    "Forecasts": len(entries),
-                    "MAE": metrics["mae"],
-                    "WMAPE (%)": metrics["wmape"],
-                    "Bias": round(metrics["bias"], 2),
-                    "Correction Factor": factor,
-                })
+        for (store, product), entries in sorted(groups.items()):
+            actuals_arr = np.array([e["actual"] for e in entries])
+            predicted_arr = np.array([e["predicted"] for e in entries])
+            metrics = compute_metrics(actuals_arr, predicted_arr)
+            corrections = compute_correction_factors(filepath)
+            factor = corrections.get((store, product), 1.0)
+            summary_rows.append({
+                "Store": store,
+                "Product": product,
+                "Forecasts": len(entries),
+                "MAE": metrics["mae"],
+                "WMAPE (%)": metrics["wmape"],
+                "Bias": round(metrics["bias"], 2),
+                "Correction Factor": factor,
+            })
 
-            summary_df = pd.DataFrame(summary_rows)
-            summary_df.to_excel(writer, sheet_name="Accuracy Summary", index=False)
+        summary_df = pd.DataFrame(summary_rows)
+        summary_df.to_excel(writer, sheet_name="Accuracy Summary", index=False)
 
         # Auto-fit column widths
         for sheet_name in writer.sheets:

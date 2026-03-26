@@ -70,19 +70,19 @@ def record_forecasts_batch(
     now = datetime.now().isoformat()
 
     # Build lookup of existing entries to avoid duplicates
-    existing = set()
-    for h in history:
-        existing.add((h["store"], h["product"], h["date"]))
+    # Map (store, product, date) -> index in history for fast updates
+    existing = {}
+    for i, h in enumerate(history):
+        key = (h["store"], h["product"], h["date"])
+        existing[key] = i  # last index wins if dupes already exist
 
     for store, product, forecast_date, predicted_qty in entries:
         key = (store, product, forecast_date)
         if key in existing:
             # Update the existing entry with the new prediction
-            for h in history:
-                if h["store"] == store and h["product"] == product and h["date"] == forecast_date:
-                    h["predicted"] = round(predicted_qty)
-                    h["recorded_at"] = now
-                    break
+            idx = existing[key]
+            history[idx]["predicted"] = round(predicted_qty)
+            history[idx]["recorded_at"] = now
         else:
             history.append({
                 "store": store,
@@ -93,7 +93,7 @@ def record_forecasts_batch(
                 "model_version": model_version,
                 "recorded_at": now,
             })
-            existing.add(key)
+            existing[key] = len(history) - 1
     save_feedback_history(history, filepath)
 
 

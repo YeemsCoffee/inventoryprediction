@@ -102,4 +102,14 @@ FORECAST_CONFIG = {
 
     # Ensemble weight optimization metric
     "ensemble_weight_metric": "mae",  # "mae" or "wmape" — MAPE is never used for optimization
+
+    # Volume tier thresholds (avg daily demand)
+    "volume_tiers": {
+        "high":     {"min_avg_demand": 5.0},
+        "low":      {"min_avg_demand": 0.5},
+        "sporadic": {"min_avg_demand": 0.0},
+    },
+
+    # Sporadic model: two-stage classifier + regressor
+    "sporadic_classifier_threshold": 0.5,  # probability threshold for "will order today"
 }

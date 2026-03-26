@@ -23,8 +23,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from engine.ingest import load_all_data, build_daily_demand
 from engine.features import build_feature_matrix
-from engine.models import DayOfWeekModel, ExpSmoothingModel, GBTModel, EnsembleForecaster
+from engine.models import DayOfWeekModel, ExpSmoothingModel, GBTModel, SporadicModel, EnsembleForecaster
 from engine.backtest import walk_forward_backtest, evaluate_models, generate_accuracy_report
+from engine.features import get_tier_map
 from engine.feedback import (
     compute_correction_factors, record_forecasts_batch, update_actuals,
     generate_feedback_report, export_feedback_to_excel,
@@ -88,14 +89,33 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
     stores = sorted(daily["store"].unique())
     products = sorted(daily["product"].unique())
 
-    # Train GBT globally
+    # Classify items by volume tier
+    tier_map = get_tier_map(daily)
+    tier_counts = {}
+    for t in tier_map.values():
+        tier_counts[t] = tier_counts.get(t, 0) + 1
+    print(f"  Volume tiers: {', '.join(f'{k}={v}' for k, v in sorted(tier_counts.items()))}")
+
+    # Train GBT globally (serves high + low volume items)
     gbt = GBTModel()
     gbt.fit(features)
+
+    # Train sporadic two-stage model on sporadic-tier data only
+    sporadic_model = SporadicModel()
+    sporadic_features = features[features.apply(
+        lambda r: tier_map.get((r["store"], r["product"]), "low") == "sporadic", axis=1
+    )]
+    if len(sporadic_features) >= 20:
+        sporadic_model.fit(sporadic_features)
+        print(f"  Sporadic model trained on {len(sporadic_features)} rows ({tier_counts.get('sporadic', 0)} items)")
+    else:
+        print(f"  Sporadic model: not enough data ({len(sporadic_features)} rows), using ensemble fallback")
 
     # Get correction factors from feedback loop
     corrections = compute_correction_factors()
 
-    predictions = {}  # (store, product) -> np.array
+    predictions = {}       # (store, product) -> np.array
+    forecast_meta = {}     # (store, product) -> {"tier": str, "model": str}
 
     for store in stores:
         for product in products:
@@ -103,35 +123,45 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
                 (daily["store"] == store) & (daily["product"] == product)
             ]
 
-            # Per-product models
-            dow_model = DayOfWeekModel()
-            exp_model = ExpSmoothingModel()
-            dow_model.fit(sp_demand[["date", "qty"]])
-            exp_model.fit(sp_demand[["date", "qty"]])
+            tier = tier_map.get((store, product), "low")
 
-            dow_preds = dow_model.predict(forecast_dates)
-            exp_preds = exp_model.predict(forecast_dates)
-
-            # Build feature rows for GBT prediction on future dates
+            # Build feature rows for future dates
             future_features = _build_future_features(sp_demand, features, store, product, forecast_dates)
-            if future_features is not None and gbt.is_fitted:
-                gbt_preds = gbt.predict(future_features)
-            else:
-                gbt_preds = np.zeros(num_days)
 
-            # Ensemble
-            ensemble_preds = (
-                weights["dow"] * dow_preds +
-                weights["exp"] * exp_preds +
-                weights["gbt"] * gbt_preds
-            )
-            ensemble_preds = np.maximum(0, ensemble_preds)
+            # --- Sporadic tier: use two-stage model if fitted ---
+            if tier == "sporadic" and sporadic_model.is_fitted and future_features is not None:
+                preds = sporadic_model.predict(future_features)
+                model_name = "sporadic_v1"
+            else:
+                # --- High / Low / fallback: use ensemble ---
+                dow_model = DayOfWeekModel()
+                exp_model = ExpSmoothingModel()
+                dow_model.fit(sp_demand[["date", "qty"]])
+                exp_model.fit(sp_demand[["date", "qty"]])
+
+                dow_preds = dow_model.predict(forecast_dates)
+                exp_preds = exp_model.predict(forecast_dates)
+
+                if future_features is not None and gbt.is_fitted:
+                    gbt_preds = gbt.predict(future_features)
+                else:
+                    gbt_preds = np.zeros(num_days)
+
+                preds = (
+                    weights["dow"] * dow_preds +
+                    weights["exp"] * exp_preds +
+                    weights["gbt"] * gbt_preds
+                )
+                model_name = "ensemble_v2"
+
+            preds = np.maximum(0, preds)
 
             # Apply feedback correction
             correction = corrections.get((store, product), 1.0)
-            ensemble_preds *= correction
+            preds *= correction
 
-            predictions[(store, product)] = ensemble_preds
+            predictions[(store, product)] = preds
+            forecast_meta[(store, product)] = {"tier": tier, "model": model_name}
 
     # --- Step 6: Apply safety stock and generate output ---
     print("\n[6/6] Applying safety stock and generating packing lists...")
@@ -162,7 +192,7 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
     for (store, product), preds in predictions.items():
         for i, d in enumerate(forecast_dates):
             forecast_entries.append((store, product, d.strftime("%Y-%m-%d"), int(preds[i])))
-    record_forecasts_batch(forecast_entries)
+    record_forecasts_batch(forecast_entries, metadata=forecast_meta)
 
     print(f"\n  Forecast period: {forecast_dates[0].strftime('%m/%d/%Y')} - {forecast_dates[-1].strftime('%m/%d/%Y')}")
     print(f"  Output saved to: {output_dir}/")

@@ -5,7 +5,7 @@ Multiple approaches that get ensembled for robust predictions.
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.ensemble import GradientBoostingRegressor, GradientBoostingClassifier
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from config.products import FORECAST_CONFIG
 import warnings
@@ -183,6 +183,90 @@ class GBTModel:
         if not self.is_fitted:
             return {}
         return dict(zip(self.FEATURE_COLS, self.model.feature_importances_))
+
+
+# ---------------------------------------------------------------------------
+# Model 4: Sporadic Demand (two-stage: classifier + regressor)
+# ---------------------------------------------------------------------------
+
+class SporadicModel:
+    """
+    Two-stage model for items with intermittent/sporadic demand.
+    Stage 1: Binary classifier — will there be demand today? (yes/no)
+    Stage 2: Regressor — if yes, how much? (trained on non-zero days only)
+    """
+
+    FEATURE_COLS = GBTModel.FEATURE_COLS  # reuse same features
+
+    def __init__(self):
+        self.classifier = GradientBoostingClassifier(
+            n_estimators=50,
+            max_depth=3,
+            learning_rate=0.1,
+            subsample=0.8,
+            min_samples_leaf=5,
+            random_state=42,
+        )
+        self.regressor = GradientBoostingRegressor(
+            loss=FORECAST_CONFIG["gbt_loss"],
+            alpha=FORECAST_CONFIG["gbt_huber_alpha"],
+            n_estimators=50,
+            max_depth=3,
+            learning_rate=0.1,
+            subsample=0.8,
+            min_samples_leaf=3,
+            random_state=42,
+        )
+        self.is_fitted = False
+        self.prob_threshold = FORECAST_CONFIG.get("sporadic_classifier_threshold", 0.5)
+
+    def fit(self, feature_df: pd.DataFrame):
+        """Fit on sporadic-tier data only."""
+        df = feature_df.dropna(subset=self.FEATURE_COLS).copy()
+        if len(df) < 20:
+            return self
+
+        X = df[self.FEATURE_COLS].values
+        y = df["qty"].values
+
+        # Stage 1: classify non-zero demand
+        y_binary = (y > 0).astype(int)
+
+        # Need at least 2 classes to fit classifier
+        if y_binary.sum() < 3 or (y_binary == 0).sum() < 3:
+            return self
+
+        self.classifier.fit(X, y_binary)
+
+        # Stage 2: regressor on non-zero days only
+        nonzero_mask = y > 0
+        if nonzero_mask.sum() >= 5:
+            self.regressor.fit(X[nonzero_mask], y[nonzero_mask])
+            self.is_fitted = True
+
+        return self
+
+    def predict(self, feature_df: pd.DataFrame) -> np.ndarray:
+        if not self.is_fitted:
+            return np.zeros(len(feature_df))
+
+        X = feature_df[self.FEATURE_COLS].fillna(0).values
+
+        # Stage 1: probability of non-zero demand
+        prob = self.classifier.predict_proba(X)[:, 1]
+
+        # Stage 2: predicted quantity (for non-zero days)
+        qty_pred = self.regressor.predict(X)
+        qty_pred = np.maximum(0, qty_pred)
+
+        # Combine: expected value = prob * quantity
+        # If prob >= threshold, use full qty; otherwise scale down
+        preds = np.where(
+            prob >= self.prob_threshold,
+            qty_pred,
+            prob * qty_pred,
+        )
+        return np.maximum(0, preds)
 
 
 # ---------------------------------------------------------------------------

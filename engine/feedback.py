@@ -61,10 +61,12 @@ def record_forecasts_batch(
     entries: list,
     model_version: str = "v2",
     filepath: str = FEEDBACK_FILE,
+    metadata: dict = None,
 ):
     """Record multiple forecasts in a single load/save cycle.
 
     entries: list of (store, product, forecast_date, predicted_qty) tuples.
+    metadata: optional dict of (store, product) -> {"tier": str, "model": str}
     """
     history = load_feedback_history(filepath)
     now = datetime.now().isoformat()
@@ -78,11 +80,17 @@ def record_forecasts_batch(
 
     for store, product, forecast_date, predicted_qty in entries:
         key = (store, product, forecast_date)
+        meta = (metadata or {}).get((store, product), {})
+        tier = meta.get("tier", "unknown")
+        model_name = meta.get("model", model_version)
+
         if key in existing:
             # Update the existing entry with the new prediction
             idx = existing[key]
             history[idx]["predicted"] = round(predicted_qty)
             history[idx]["recorded_at"] = now
+            history[idx]["volume_tier"] = tier
+            history[idx]["model_version"] = model_name
         else:
             history.append({
                 "store": store,
@@ -90,7 +98,8 @@ def record_forecasts_batch(
                 "date": forecast_date,
                 "predicted": round(predicted_qty),
                 "actual": None,
-                "model_version": model_version,
+                "volume_tier": tier,
+                "model_version": model_name,
                 "recorded_at": now,
             })
             existing[key] = len(history) - 1

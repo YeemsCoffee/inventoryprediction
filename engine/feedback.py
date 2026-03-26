@@ -109,8 +109,13 @@ def update_actuals(
     if not history:
         return 0
 
+    # Only set actual=0 for dates covered by the sales data, not future dates
+    max_sales_date = actuals_df["date"].max()
+
     updated = 0
     for entry in history:
+        entry_date = pd.Timestamp(entry["date"])
+
         match = actuals_df[
             (actuals_df["store"] == entry["store"]) &
             (actuals_df["product"] == entry["product"]) &
@@ -119,8 +124,12 @@ def update_actuals(
 
         if len(match) > 0:
             new_actual = float(match["qty"].sum())
-        else:
+        elif entry_date <= max_sales_date:
+            # Date is within sales data range but no record — means zero sold
             new_actual = 0.0
+        else:
+            # Future date — no sales data yet, leave as-is
+            continue
 
         if entry["actual"] != new_actual:
             entry["actual"] = new_actual

@@ -4474,10 +4474,10 @@
     "product": "2% Milk",
     "date": "2026-03-25",
     "predicted": 2,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.52
+    "error": 1.0
   },
   {
     "store": "Gardena",
@@ -4614,10 +4614,10 @@
     "product": "Agave Cases",
     "date": "2026-03-25",
     "predicted": 2,
-    "actual": 0.0,
+    "actual": 2.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.73
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -4754,10 +4754,10 @@
     "product": "Almond Milk",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 3.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.4
+    "error": -2.0
   },
   {
     "store": "Gardena",
@@ -5034,10 +5034,10 @@
     "product": "Black Straws",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -5314,10 +5314,10 @@
     "product": "Bleach",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 0.05
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -5454,10 +5454,10 @@
     "product": "Buttercream",
     "date": "2026-03-25",
     "predicted": 4,
-    "actual": 0.0,
+    "actual": 4.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 4.36
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -5734,10 +5734,10 @@
     "product": "Caramel",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 0.06
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -6714,10 +6714,10 @@
     "product": "Cup Sleeves - Green",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -7274,10 +7274,10 @@
     "product": "Custom Ice Cups",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -7834,10 +7834,10 @@
     "product": "Espresso Beans",
     "date": "2026-03-25",
     "predicted": 13,
-    "actual": 0.0,
+    "actual": 10.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 17.57
+    "error": 3.0
   },
   {
     "store": "Gardena",
@@ -8534,10 +8534,10 @@
     "product": "Honey",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 0.08
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -8954,10 +8954,10 @@
     "product": "Ice lid",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -9234,10 +9234,10 @@
     "product": "Lavender",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 0.07
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -9514,10 +9514,10 @@
     "product": "M1200 Matcha",
     "date": "2026-03-25",
     "predicted": 2,
-    "actual": 0.0,
+    "actual": 4.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.78
+    "error": -2.0
   },
   {
     "store": "Gardena",
@@ -10354,10 +10354,10 @@
     "product": "Oat Milk",
     "date": "2026-03-25",
     "predicted": 4,
-    "actual": 0.0,
+    "actual": 5.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 4.91
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -10494,10 +10494,10 @@
     "product": "Paper 2 Cup Carrier Bag",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 0.03
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -10914,10 +10914,10 @@
     "product": "Paper Towel",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -11614,10 +11614,10 @@
     "product": "Rose",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 2.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 0.1
+    "error": -2.0
   },
   {
     "store": "Gardena",
@@ -12034,10 +12034,10 @@
     "product": "Strawberry Puree Cases",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 0.56
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -13154,10 +13154,10 @@
     "product": "Ube Condensed Milk",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 0.31
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -13434,10 +13434,10 @@
     "product": "Vienna Cream",
     "date": "2026-03-25",
     "predicted": 14,
-    "actual": 0.0,
+    "actual": 15.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 17.11
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -13574,10 +13574,10 @@
     "product": "Whole Milk",
     "date": "2026-03-25",
     "predicted": 16,
-    "actual": 0.0,
+    "actual": 27.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 18.53
+    "error": -11.0
   },
   {
     "store": "Gardena",
@@ -14134,10 +14134,10 @@
     "product": "2% Milk",
     "date": "2026-03-25",
     "predicted": 2,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.77
+    "error": 1.0
   },
   {
     "store": "KTOWN",
@@ -15114,10 +15114,10 @@
     "product": "Buttercream",
     "date": "2026-03-25",
     "predicted": 4,
-    "actual": 0.0,
+    "actual": 3.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 4.98
+    "error": 1.0
   },
   {
     "store": "KTOWN",
@@ -15954,10 +15954,10 @@
     "product": "Coldbrew Concentrate",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.37
+    "error": 0.0
   },
   {
     "store": "KTOWN",
@@ -16934,10 +16934,10 @@
     "product": "Custom Ice Cups",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "KTOWN",
@@ -17494,10 +17494,10 @@
     "product": "Espresso Beans",
     "date": "2026-03-25",
     "predicted": 13,
-    "actual": 0.0,
+    "actual": 11.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 16.64
+    "error": 2.0
   },
   {
     "store": "KTOWN",
@@ -18194,10 +18194,10 @@
     "product": "Honey",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 0.32
+    "error": -1.0
   },
   {
     "store": "KTOWN",
@@ -18614,10 +18614,10 @@
     "product": "Ice lid",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.41
+    "error": 0.0
   },
   {
     "store": "KTOWN",
@@ -18894,10 +18894,10 @@
     "product": "Lavender",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 0.25
+    "error": -1.0
   },
   {
     "store": "KTOWN",
@@ -19174,10 +19174,10 @@
     "product": "M1200 Matcha",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 0.88
+    "error": 0.0
   },
   {
     "store": "KTOWN",
@@ -19314,10 +19314,10 @@
     "product": "Matcha Drizzle",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 2.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 0.56
+    "error": -1.0
   },
   {
     "store": "KTOWN",
@@ -20014,10 +20014,10 @@
     "product": "Oat Milk",
     "date": "2026-03-25",
     "predicted": 3,
-    "actual": 0.0,
+    "actual": 4.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 4.74
+    "error": -1.0
   },
   {
     "store": "KTOWN",
@@ -20994,10 +20994,10 @@
     "product": "Receipt rolls",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 2.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 1.0
+    "error": -1.0
   },
   {
     "store": "KTOWN",
@@ -21414,10 +21414,10 @@
     "product": "Sanchez (retail)",
     "date": "2026-03-25",
     "predicted": 5,
-    "actual": 0.0,
+    "actual": 5.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 3.36
+    "error": 0.0
   },
   {
     "store": "KTOWN",
@@ -23094,10 +23094,10 @@
     "product": "Vienna Cream",
     "date": "2026-03-25",
     "predicted": 13,
-    "actual": 0.0,
+    "actual": 11.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 14.99
+    "error": 2.0
   },
   {
     "store": "KTOWN",
@@ -23234,10 +23234,10 @@
     "product": "Whole Milk",
     "date": "2026-03-25",
     "predicted": 19,
-    "actual": 0.0,
+    "actual": 21.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 21.17
+    "error": -2.0
   },
   {
     "store": "KTOWN",
@@ -23744,10 +23744,10 @@
     "product": "2% Milk",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -23884,10 +23884,10 @@
     "product": "Agave Cases",
     "date": "2026-03-25",
     "predicted": 2,
-    "actual": 0.0,
+    "actual": 2.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 2.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -24024,10 +24024,10 @@
     "product": "Almond Milk",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 3.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": -2.0
   },
   {
     "store": "Gardena",
@@ -24304,10 +24304,10 @@
     "product": "Black Straws",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -24584,10 +24584,10 @@
     "product": "Bleach",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 0.0
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -24724,10 +24724,10 @@
     "product": "Buttercream",
     "date": "2026-03-25",
     "predicted": 4,
-    "actual": 0.0,
+    "actual": 4.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 4.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -25004,10 +25004,10 @@
     "product": "Caramel",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 0.0
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -25984,10 +25984,10 @@
     "product": "Cup Sleeves - Green",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -26544,10 +26544,10 @@
     "product": "Custom Ice Cups",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -27104,10 +27104,10 @@
     "product": "Espresso Beans",
     "date": "2026-03-25",
     "predicted": 16,
-    "actual": 0.0,
+    "actual": 10.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 16.0
+    "error": 6.0
   },
   {
     "store": "Gardena",
@@ -27804,10 +27804,10 @@
     "product": "Honey",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 0.0
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -28224,10 +28224,10 @@
     "product": "Ice lid",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -28504,10 +28504,10 @@
     "product": "Lavender",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 0.0
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -28784,10 +28784,10 @@
     "product": "M1200 Matcha",
     "date": "2026-03-25",
     "predicted": 2,
-    "actual": 0.0,
+    "actual": 4.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 2.0
+    "error": -2.0
   },
   {
     "store": "Gardena",
@@ -29624,10 +29624,10 @@
     "product": "Oat Milk",
     "date": "2026-03-25",
     "predicted": 4,
-    "actual": 0.0,
+    "actual": 5.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 4.0
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -29764,10 +29764,10 @@
     "product": "Paper 2 Cup Carrier Bag",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 0.0
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -30184,10 +30184,10 @@
     "product": "Paper Towel",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -30884,10 +30884,10 @@
     "product": "Rose",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 2.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 0.0
+    "error": -2.0
   },
   {
     "store": "Gardena",
@@ -31304,10 +31304,10 @@
     "product": "Strawberry Puree Cases",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -32424,10 +32424,10 @@
     "product": "Ube Condensed Milk",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 0.0
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -32704,10 +32704,10 @@
     "product": "Vienna Cream",
     "date": "2026-03-25",
     "predicted": 15,
-    "actual": 0.0,
+    "actual": 15.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 15.0
+    "error": 0.0
   },
   {
     "store": "Gardena",
@@ -32844,10 +32844,10 @@
     "product": "Whole Milk",
     "date": "2026-03-25",
     "predicted": 17,
-    "actual": 0.0,
+    "actual": 27.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 17.0
+    "error": -10.0
   },
   {
     "store": "Gardena",
@@ -33404,10 +33404,10 @@
     "product": "2% Milk",
     "date": "2026-03-25",
     "predicted": 2,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 2.0
+    "error": 1.0
   },
   {
     "store": "KTOWN",
@@ -34384,10 +34384,10 @@
     "product": "Buttercream",
     "date": "2026-03-25",
     "predicted": 5,
-    "actual": 0.0,
+    "actual": 3.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 5.0
+    "error": 2.0
   },
   {
     "store": "KTOWN",
@@ -35224,10 +35224,10 @@
     "product": "Coldbrew Concentrate",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "KTOWN",
@@ -36204,10 +36204,10 @@
     "product": "Custom Ice Cups",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "KTOWN",
@@ -36764,10 +36764,10 @@
     "product": "Espresso Beans",
     "date": "2026-03-25",
     "predicted": 16,
-    "actual": 0.0,
+    "actual": 11.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 16.0
+    "error": 5.0
   },
   {
     "store": "KTOWN",
@@ -37464,10 +37464,10 @@
     "product": "Honey",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 0.0
+    "error": -1.0
   },
   {
     "store": "KTOWN",
@@ -37884,10 +37884,10 @@
     "product": "Ice lid",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "KTOWN",
@@ -38164,10 +38164,10 @@
     "product": "Lavender",
     "date": "2026-03-25",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 0.0
+    "error": -1.0
   },
   {
     "store": "KTOWN",
@@ -38444,10 +38444,10 @@
     "product": "M1200 Matcha",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": 0.0
   },
   {
     "store": "KTOWN",
@@ -38584,10 +38584,10 @@
     "product": "Matcha Drizzle",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 2.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": -1.0
   },
   {
     "store": "KTOWN",
@@ -39284,10 +39284,10 @@
     "product": "Oat Milk",
     "date": "2026-03-25",
     "predicted": 4,
-    "actual": 0.0,
+    "actual": 4.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 4.0
+    "error": 0.0
   },
   {
     "store": "KTOWN",
@@ -40264,10 +40264,10 @@
     "product": "Receipt rolls",
     "date": "2026-03-25",
     "predicted": 1,
-    "actual": 0.0,
+    "actual": 2.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 1.0
+    "error": -1.0
   },
   {
     "store": "KTOWN",
@@ -40684,10 +40684,10 @@
     "product": "Sanchez (retail)",
     "date": "2026-03-25",
     "predicted": 4,
-    "actual": 0.0,
+    "actual": 5.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 4.0
+    "error": -1.0
   },
   {
     "store": "KTOWN",
@@ -42364,10 +42364,10 @@
     "product": "Vienna Cream",
     "date": "2026-03-25",
     "predicted": 15,
-    "actual": 0.0,
+    "actual": 11.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 15.0
+    "error": 4.0
   },
   {
     "store": "KTOWN",
@@ -42504,10 +42504,10 @@
     "product": "Whole Milk",
     "date": "2026-03-25",
     "predicted": 21,
-    "actual": 0.0,
+    "actual": 21.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T15:16:55.736335",
-    "error": 21.0
+    "error": 0.0
   },
   {
     "store": "KTOWN",

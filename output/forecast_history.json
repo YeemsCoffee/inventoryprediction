@@ -324,10 +324,10 @@
     "product": "2% Milk",
     "date": "2026-03-24",
     "predicted": 2,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T14:52:17.578080",
-    "error": 1.57
+    "error": 1.0
   },
   {
     "store": "Gardena",
@@ -4104,10 +4104,10 @@
     "product": "Half & Half",
     "date": "2026-03-24",
     "predicted": 0,
-    "actual": 0.0,
+    "actual": 1.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T16:38:19.379735",
-    "error": 0.0
+    "error": -1.0
   },
   {
     "store": "Gardena",
@@ -9424,10 +9424,10 @@
     "product": "Whole Milk",
     "date": "2026-03-24",
     "predicted": 16,
-    "actual": 0.0,
+    "actual": 15.0,
     "model_version": "v2",
     "recorded_at": "2026-03-25T14:52:17.578080",
-    "error": 16.13
+    "error": 1.0
   },
   {
     "store": "Gardena",

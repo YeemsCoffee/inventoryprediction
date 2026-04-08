@@ -82,5 +82,50 @@ OBSOLETE_PRODUCTS = {
     "Supremo (retail)",
 }
 
+# Periodic products — replenished on a predictable 2-3 day cadence.
+# Daily-level ordering looks noisy but the underlying cycle is regular.
+# Used as a secondary fallback in lane routing (after PRODUCT_LANES overrides).
+PERIODIC_PRODUCTS = {
+    "Ice Cups",
+    "Custom Ice Cups",
+    "Ice lid",
+    "Cup Sleeves - Green",
+    "Cup Sleeves - Red",
+}
+
+# Explicit lane overrides — take precedence over all dynamic routing signals.
+# Values: 'daily' | 'periodic' | 'intermittent' | 'dormant'
+#
+# Lane 1 (daily):       stable, high-frequency daily-use ingredients
+# Lane 2 (periodic):    ordered on a predictable 2-3 day delivery cadence
+# Lane 3 (intermittent): bursty, low-frequency — use reorder/probability logic
+# Lane 4 (dormant):     near-zero sustained demand — default to zero
+PRODUCT_LANES = {
+    # Lane 1 — Daily ML forecast
+    "Whole Milk":           "daily",
+    "Vienna Cream":         "daily",
+    "Espresso Beans":       "daily",
+    "Oat Milk":             "daily",
+    "Buttercream":          "daily",
+    "Almond Milk":          "daily",
+    "2% Milk":              "daily",
+    "Coldbrew Concentrate": "daily",
+
+    # Lane 2 — Periodic / delivery-window
+    "Ice Cups":             "periodic",
+    "Custom Ice Cups":      "periodic",
+    "Ice lid":              "periodic",
+    "Cup Sleeves - Green":  "periodic",
+    "Cup Sleeves - Red":    "periodic",
+
+    # Lane 3 — Intermittent / reorder logic
+    "Toilet Paper":         "intermittent",
+    "Receipt rolls":        "intermittent",
+    "Cup Carriers":         "intermittent",
+    "Paper Towel":          "intermittent",
+    "Paper Bag":            "intermittent",
+    "Sanchez (retail)":     "intermittent",
+}
+
 # Stores
 STORES = ("Gardena", "KTOWN")

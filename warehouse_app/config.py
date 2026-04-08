@@ -24,6 +24,17 @@ class Config:
     WEIGHTED_DECAY_FACTOR = float(os.environ.get('WEIGHTED_DECAY_FACTOR', '0.9'))
     WEIGHTED_DOW_MULTIPLIER = float(os.environ.get('WEIGHTED_DOW_MULTIPLIER', '0.0'))  # 0 = disabled
 
+    # ── Multi-lane forecast routing ───────────────────────────────────
+    # Lookback window (days) used to compute routing classification signals.
+    # Kept separate from the forecast window so routing stays stable.
+    LANE_ROUTING_WINDOW = int(os.environ.get('LANE_ROUTING_WINDOW', '28'))
+    # Products with zero-rate >= this are classified as dormant (Lane 4).
+    LANE_DORMANT_ZERO_RATE = float(os.environ.get('LANE_DORMANT_ZERO_RATE', '0.95'))
+    # Products with zero-rate >= this (but below dormant) → intermittent (Lane 3).
+    LANE_INTERMITTENT_ZERO_RATE = float(os.environ.get('LANE_INTERMITTENT_ZERO_RATE', '0.65'))
+    # Delivery window (days) used to smooth periodic forecasts (Lane 2).
+    LANE_PERIODIC_DELIVERY_WINDOW = int(os.environ.get('LANE_PERIODIC_DELIVERY_WINDOW', '3'))
+
     # ── CSV import limits ─────────────────────────────────────
     CSV_MAX_ROWS = 10000
     CSV_MAX_QUANTITY = 999999

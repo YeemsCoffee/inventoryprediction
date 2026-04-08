@@ -30,7 +30,7 @@ from engine.feedback import (
     generate_feedback_report,
 )
 from engine.packing import apply_safety_stock, generate_packing_list_csv, print_packing_list, load_par_levels
-from config.products import STORES
+from config.products import STORES, PRODUCT_LANES, PERIODIC_PRODUCTS
 
 
 def run_backtest(data_dir: str = "."):
@@ -96,6 +96,7 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
     corrections = compute_correction_factors()
 
     predictions = {}  # (store, product) -> np.array
+    lane_counts = {"daily": 0, "periodic": 0, "intermittent": 0, "dormant": 0}
 
     for store in stores:
         for product in products:
@@ -103,7 +104,29 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
                 (daily["store"] == store) & (daily["product"] == product)
             ]
 
-            # Per-product models
+            lane = _classify_lane(product, sp_demand)
+            lane_counts[lane] += 1
+
+            # Lane 4 — Dormant: sustained near-zero demand, skip entirely
+            if lane == "dormant":
+                predictions[(store, product)] = np.zeros(num_days)
+                continue
+
+            # Lane 3 — Intermittent: P(order) × E[qty|order]
+            if lane == "intermittent":
+                preds = _predict_intermittent(sp_demand, num_days)
+                preds = preds * corrections.get((store, product), 1.0)
+                predictions[(store, product)] = preds
+                continue
+
+            # Lane 2 — Periodic: avg_order_size / avg_interval
+            if lane == "periodic":
+                preds = _predict_periodic(sp_demand, num_days)
+                preds = preds * corrections.get((store, product), 1.0)
+                predictions[(store, product)] = preds
+                continue
+
+            # Lane 1 — Daily ML ensemble (DOW + ExpSmoothing + GBT)
             dow_model = DayOfWeekModel()
             exp_model = ExpSmoothingModel()
             dow_model.fit(sp_demand[["date", "qty"]])
@@ -112,26 +135,26 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
             dow_preds = dow_model.predict(forecast_dates)
             exp_preds = exp_model.predict(forecast_dates)
 
-            # Build feature rows for GBT prediction on future dates
             future_features = _build_future_features(sp_demand, features, store, product, forecast_dates)
             if future_features is not None and gbt.is_fitted:
                 gbt_preds = gbt.predict(future_features)
             else:
                 gbt_preds = np.zeros(num_days)
 
-            # Ensemble
             ensemble_preds = (
                 weights["dow"] * dow_preds +
                 weights["exp"] * exp_preds +
                 weights["gbt"] * gbt_preds
             )
             ensemble_preds = np.maximum(0, ensemble_preds)
-
-            # Apply feedback correction
-            correction = corrections.get((store, product), 1.0)
-            ensemble_preds *= correction
+            ensemble_preds *= corrections.get((store, product), 1.0)
 
             predictions[(store, product)] = ensemble_preds
+
+    print(f"  Lane routing: {lane_counts['daily']} daily, "
+          f"{lane_counts['periodic']} periodic, "
+          f"{lane_counts['intermittent']} intermittent, "
+          f"{lane_counts['dormant']} dormant")
 
     # --- Step 6: Apply safety stock and generate output ---
     print("\n[6/6] Applying safety stock and generating packing lists...")
@@ -233,6 +256,78 @@ def _build_future_features(
         rows.append(row)
 
     return pd.DataFrame(rows)
+
+
+_ROUTING_WINDOW = 28  # days of history used to classify a product's lane
+
+
+def _classify_lane(product: str, sp_demand: pd.DataFrame) -> str:
+    """
+    Route a product to its forecast lane.
+
+    Priority:
+    1. Explicit override in PRODUCT_LANES (config/products.py).
+    2. Dynamic classification from the last _ROUTING_WINDOW days:
+       - zero-rate >= 95%  → dormant
+       - zero-rate >= 65%  → intermittent
+       - in PERIODIC_PRODUCTS → periodic
+       - otherwise         → daily (ML ensemble)
+
+    Returns: 'daily' | 'periodic' | 'intermittent' | 'dormant'
+    """
+    if product in PRODUCT_LANES:
+        return PRODUCT_LANES[product]
+
+    recent = sp_demand.tail(_ROUTING_WINDOW)
+    n_days = len(recent)
+    if n_days == 0 or recent["qty"].sum() == 0:
+        return "dormant"
+
+    n_order_days = int((recent["qty"] > 0).sum())
+    zero_rate = 1.0 - (n_order_days / n_days)
+
+    if zero_rate >= 0.95:
+        return "dormant"
+    if zero_rate >= 0.65:
+        return "intermittent"
+    if product in PERIODIC_PRODUCTS:
+        return "periodic"
+    return "daily"
+
+
+def _predict_intermittent(sp_demand: pd.DataFrame, num_days: int) -> np.ndarray:
+    """
+    Lane 3 — Intermittent: P(order) × E[qty | order] as a flat daily rate.
+
+    Avoids over-forecasting by separating order probability from order size,
+    so zero-order days don't pull the forecast down toward zero.
+    """
+    recent = sp_demand.tail(_ROUTING_WINDOW)
+    nonzero = recent[recent["qty"] > 0]["qty"]
+    if len(nonzero) == 0:
+        return np.zeros(num_days)
+    order_freq = len(nonzero) / len(recent)
+    expected_daily = order_freq * nonzero.mean()
+    return np.full(num_days, max(0.0, expected_daily))
+
+
+def _predict_periodic(sp_demand: pd.DataFrame, num_days: int,
+                      delivery_window: int = 3) -> np.ndarray:
+    """
+    Lane 2 — Periodic: avg_order_size / avg_inter_order_interval as a flat daily rate.
+
+    Smooths out the noisy daily-level ordering pattern for items (like ice cups,
+    lids, sleeves) that are replenished on a predictable 2-3 day cadence.
+    The interval is floored at delivery_window to avoid over-smoothing.
+    """
+    recent = sp_demand.tail(_ROUTING_WINDOW)
+    nonzero = recent[recent["qty"] > 0]["qty"]
+    if len(nonzero) == 0:
+        return np.zeros(num_days)
+    avg_interval = len(recent) / len(nonzero)
+    effective_interval = max(avg_interval, float(delivery_window))
+    expected_daily = nonzero.mean() / effective_interval
+    return np.full(num_days, max(0.0, expected_daily))
 
 
 def run_update_actuals(data_dir: str = "."):

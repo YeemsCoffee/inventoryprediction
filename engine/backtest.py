@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from datetime import timedelta
 from engine.models import DayOfWeekModel, ExpSmoothingModel, GBTModel, EnsembleForecaster
-from engine.features import build_feature_matrix
+from engine.features import build_feature_matrix, get_tier_map
 
 
 def compute_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict:
@@ -69,6 +69,9 @@ def walk_forward_backtest(
     stores = daily_demand["store"].unique()
     products = daily_demand["product"].unique()
 
+    # Compute tier map for labelling results
+    tier_map = get_tier_map(daily_demand)
+
     print(f"  Backtesting {len(stores)} stores x {len(products)} products over {test_days} days...")
     print(f"  Test period: {test_start.strftime('%m/%d/%Y')} - {max_date.strftime('%m/%d/%Y')}")
 
@@ -100,6 +103,7 @@ def walk_forward_backtest(
             dow_preds = dow_model.predict(test_dates)
             exp_preds = exp_model.predict(test_dates)
 
+            tier = tier_map.get((store, product), "low")
             for i, d in enumerate(test_dates):
                 results.append({
                     "store": store,
@@ -108,6 +112,7 @@ def walk_forward_backtest(
                     "actual": actuals[i],
                     "pred_dow": round(dow_preds[i], 1),
                     "pred_exp": round(exp_preds[i], 1),
+                    "volume_tier": tier,
                 })
 
     return pd.DataFrame(results)
@@ -116,6 +121,7 @@ def walk_forward_backtest(
 def evaluate_models(backtest_results: pd.DataFrame) -> dict:
     """
     Evaluate each model's performance and determine optimal ensemble weights.
+    Uses MAE (primary metric) for weight optimization. MAPE is secondary/display only.
     """
     if backtest_results.empty:
         return {"dow": 0.33, "exp": 0.34, "gbt": 0.33}
@@ -130,11 +136,11 @@ def evaluate_models(backtest_results: pd.DataFrame) -> dict:
             )
             model_metrics[model_name] = metrics
 
-    # Determine weights based on inverse WMAPE
+    # Determine weights based on inverse MAE (lower MAE = higher weight)
     weights = {}
     for name, metrics in model_metrics.items():
-        wmape = metrics.get("wmape", 100)
-        weights[name] = 1.0 / max(wmape, 1)
+        mae = metrics.get("mae", 100)
+        weights[name] = 1.0 / max(mae, 0.01)
 
     # Add GBT with default weight (can't easily backtest without features here)
     weights["gbt"] = max(weights.values()) * 1.2  # slight boost for GBT
@@ -167,7 +173,8 @@ def generate_accuracy_report(
         )
         name_map = {"dow": "Day-of-Week", "exp": "Exponential Smoothing"}
         lines.append(f"\n  {name_map.get(model_name, model_name)}:")
-        lines.append(f"    MAE:    {metrics['mae']}")
+        lines.append(f"    MAE:    {metrics['mae']}  (primary)")
+        lines.append(f"    MAPE:   {metrics['mape']}%  (secondary)" if metrics.get('mape') else "    MAPE:   N/A (no non-zero actuals)")
         lines.append(f"    WMAPE:  {metrics['wmape']}%")
         lines.append(f"    Bias:   {metrics['bias']:+.2f} ({'over' if metrics['bias'] > 0 else 'under'}-forecasting)")
         lines.append(f"    Within 1 unit: {metrics['accuracy_within_1']}% of predictions")
@@ -181,7 +188,8 @@ def generate_accuracy_report(
 
     ens_metrics = compute_metrics(br["actual"].values, br["pred_ensemble"].values)
     lines.append(f"\n  Ensemble (weighted):")
-    lines.append(f"    MAE:    {ens_metrics['mae']}")
+    lines.append(f"    MAE:    {ens_metrics['mae']}  (primary)")
+    lines.append(f"    MAPE:   {ens_metrics['mape']}%  (secondary)" if ens_metrics.get('mape') else "    MAPE:   N/A")
     lines.append(f"    WMAPE:  {ens_metrics['wmape']}%")
     lines.append(f"    Bias:   {ens_metrics['bias']:+.2f}")
     lines.append(f"    Within 1 unit: {ens_metrics['accuracy_within_1']}% of predictions")
@@ -195,6 +203,18 @@ def generate_accuracy_report(
         store_data = br[br["store"] == store]
         sm = compute_metrics(store_data["actual"].values, store_data["pred_ensemble"].values)
         lines.append(f"    {store}: MAE={sm['mae']}, WMAPE={sm['wmape']}%, Bias={sm['bias']:+.2f}")
+
+    # Per-tier breakdown
+    if "volume_tier" in br.columns:
+        lines.append(f"\n{'-' * 70}")
+        lines.append("  Per-Tier Accuracy (Ensemble):")
+        for tier in ["high", "low", "sporadic"]:
+            tier_data = br[br["volume_tier"] == tier]
+            if len(tier_data) == 0:
+                continue
+            n_products = tier_data.groupby(["store", "product"]).ngroups
+            tm = compute_metrics(tier_data["actual"].values, tier_data["pred_ensemble"].values)
+            lines.append(f"    {tier.upper()} ({n_products} items): MAE={tm['mae']}, WMAPE={tm['wmape']}%, Bias={tm['bias']:+.2f}")
 
     # Worst products
     lines.append(f"\n{'-' * 70}")

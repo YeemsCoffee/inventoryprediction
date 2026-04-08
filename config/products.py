@@ -84,3 +84,32 @@ OBSOLETE_PRODUCTS = {
 
 # Stores
 STORES = ("Gardena", "KTOWN")
+
+
+# ---------------------------------------------------------------------------
+# Forecasting model configuration
+# ---------------------------------------------------------------------------
+
+FORECAST_CONFIG = {
+    # GBT Huber loss parameters
+    "gbt_loss": "huber",          # Huber loss: quadratic for small errors, linear for large
+    "gbt_huber_alpha": 0.9,       # Quantile for Huber delta (0.9 = robust to top 10% outliers)
+    "gbt_n_estimators": 100,
+    "gbt_max_depth": 4,
+    "gbt_learning_rate": 0.1,
+    "gbt_subsample": 0.8,
+    "gbt_min_samples_leaf": 3,
+
+    # Ensemble weight optimization metric
+    "ensemble_weight_metric": "mae",  # "mae" or "wmape" — MAPE is never used for optimization
+
+    # Volume tier thresholds (avg daily demand)
+    "volume_tiers": {
+        "high":     {"min_avg_demand": 5.0},
+        "low":      {"min_avg_demand": 0.5},
+        "sporadic": {"min_avg_demand": 0.0},
+    },
+
+    # Sporadic model: two-stage classifier + regressor
+    "sporadic_classifier_threshold": 0.5,  # probability threshold for "will order today"
+}

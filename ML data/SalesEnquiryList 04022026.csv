@@ -1,0 +1,36 @@
+Sales Enquiry as of 04/03/2026,,,,,,,,,,,
+Order No.,Order Date,Required Date,Completed Date,Warehouse,Customer,Customer Type,Product,Product Group,Status,Quantity,Sub Total
+SO-00000234,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,CS Vienna Cream,Premades,Completed,18,309.60
+SO-00000234,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,Buttercream,Premades,Completed,5,82.45
+SO-00000234,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,2% Milk,Raw Material,Completed,1,4.50
+SO-00000234,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,Whole Milk,Raw Material,Completed,6,27.00
+SO-00000233,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,Sanchez (retail),Retail,Completed,7,0.00
+SO-00000233,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,Paper Towel,Cafe Supply,Completed,1,23.90
+SO-00000233,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,Paper 2 Cup Carrier Bag,Consumables,Completed,1,0.00
+SO-00000233,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,Oat Milk,Raw Material,Completed,5,160.00
+SO-00000233,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,M1200 Matcha,Raw Material,Completed,2,480.00
+SO-00000233,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,Custom Ice Cups,Consumables,Completed,1,57.90
+SO-00000233,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,Espresso Beans,Raw Material,Completed,10,253.00
+SO-00000233,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,Chai,Raw Material,Completed,1,17.60
+SO-00000233,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,Caramel,Raw Material,Completed,1,22.90
+SO-00000233,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,Almond Milk,Raw Material,Completed,1,32.00
+SO-00000233,04/02/2026,04/02/2026,04/02/2026,Warehouse,Gardena,General,4 Cup Carrier,Cafe Supply,Completed,4,35.52
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Whole Milk,Raw Material,Completed,21,94.50
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,CS Vienna Cream,Premades,Completed,11,189.20
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Vanilla Syrup,Premades,Completed,3,28.26
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Toilet Solution,Cafe Supply,Completed,1,6.62
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Strawberry Puree Cases,Raw Material,Completed,1,56.28
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Paper Bag,Cafe Supply,Completed,1,4.83
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Oat Milk,Raw Material,Completed,4,128.00
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Matcha Drizzle,Premades,Completed,1,9.21
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,M1200 Matcha,Raw Material,Completed,1,240.00
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Ice lid,Consumables,Completed,1,35.25
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Custom Ice Cups,Consumables,Completed,1,57.90
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Espresso Beans,Raw Material,Completed,13,328.90
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Decaf Beans,Raw Material,Completed,1,25.30
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Coldbrew Concentrate,Raw Material,Completed,1,42.14
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Caramel,Raw Material,Completed,1,22.90
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Buttercream,Premades,Completed,4,65.96
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Almond Milk,Raw Material,Completed,2,64.00
+SO-00000232,04/02/2026,04/02/2026,04/02/2026,Warehouse,KTOWN,General,Agave Cases,Raw Material,Completed,1,61.11
+,,,,,,,,,Totals,133,"2,966.73"

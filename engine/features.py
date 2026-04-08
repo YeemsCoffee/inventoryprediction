@@ -5,6 +5,7 @@ Transforms raw daily demand into rich feature vectors for ML models.
 
 import numpy as np
 import pandas as pd
+from config.products import FORECAST_CONFIG
 
 
 def add_calendar_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -112,6 +113,31 @@ def add_product_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def classify_volume_tier(avg_demand: float) -> str:
+    """Classify a store-product into a volume tier based on avg daily demand."""
+    tiers = FORECAST_CONFIG["volume_tiers"]
+    if avg_demand >= tiers["high"]["min_avg_demand"]:
+        return "high"
+    elif avg_demand >= tiers["low"]["min_avg_demand"]:
+        return "low"
+    else:
+        return "sporadic"
+
+
+def add_volume_tier(df: pd.DataFrame) -> pd.DataFrame:
+    """Add volume_tier column based on per-store-product avg demand."""
+    df = df.copy()
+    avg_demand = df.groupby(["store", "product"])["qty"].transform("mean")
+    df["volume_tier"] = avg_demand.apply(classify_volume_tier)
+    return df
+
+
+def get_tier_map(daily_demand: pd.DataFrame) -> dict:
+    """Return {(store, product): tier} mapping for all items."""
+    avg = daily_demand.groupby(["store", "product"])["qty"].mean()
+    return {k: classify_volume_tier(v) for k, v in avg.items()}
+
+
 def build_feature_matrix(daily_demand: pd.DataFrame) -> pd.DataFrame:
     """Full feature engineering pipeline."""
     df = daily_demand.copy()
@@ -119,4 +145,5 @@ def build_feature_matrix(daily_demand: pd.DataFrame) -> pd.DataFrame:
     df = add_lag_features(df)
     df = add_trend_features(df)
     df = add_product_features(df)
+    df = add_volume_tier(df)
     return df

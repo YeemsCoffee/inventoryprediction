@@ -61,23 +61,48 @@ def record_forecasts_batch(
     entries: list,
     model_version: str = "v2",
     filepath: str = FEEDBACK_FILE,
+    metadata: dict = None,
 ):
     """Record multiple forecasts in a single load/save cycle.
 
     entries: list of (store, product, forecast_date, predicted_qty) tuples.
+    metadata: optional dict of (store, product) -> {"tier": str, "model": str}
     """
     history = load_feedback_history(filepath)
     now = datetime.now().isoformat()
+
+    # Build lookup of existing entries to avoid duplicates
+    # Map (store, product, date) -> index in history for fast updates
+    existing = {}
+    for i, h in enumerate(history):
+        key = (h["store"], h["product"], h["date"])
+        existing[key] = i  # last index wins if dupes already exist
+
     for store, product, forecast_date, predicted_qty in entries:
-        history.append({
-            "store": store,
-            "product": product,
-            "date": forecast_date,
-            "predicted": round(predicted_qty, 2),
-            "actual": None,
-            "model_version": model_version,
-            "recorded_at": now,
-        })
+        key = (store, product, forecast_date)
+        meta = (metadata or {}).get((store, product), {})
+        tier = meta.get("tier", "unknown")
+        model_name = meta.get("model", model_version)
+
+        if key in existing:
+            # Update the existing entry with the new prediction
+            idx = existing[key]
+            history[idx]["predicted"] = round(predicted_qty)
+            history[idx]["recorded_at"] = now
+            history[idx]["volume_tier"] = tier
+            history[idx]["model_version"] = model_name
+        else:
+            history.append({
+                "store": store,
+                "product": product,
+                "date": forecast_date,
+                "predicted": round(predicted_qty),
+                "actual": None,
+                "volume_tier": tier,
+                "model_version": model_name,
+                "recorded_at": now,
+            })
+            existing[key] = len(history) - 1
     save_feedback_history(history, filepath)
 
 
@@ -93,10 +118,12 @@ def update_actuals(
     if not history:
         return 0
 
+    # Only set actual=0 for dates covered by the sales data, not future dates
+    max_sales_date = actuals_df["date"].max()
+
     updated = 0
     for entry in history:
-        if entry["actual"] is not None:
-            continue
+        entry_date = pd.Timestamp(entry["date"])
 
         match = actuals_df[
             (actuals_df["store"] == entry["store"]) &
@@ -105,7 +132,16 @@ def update_actuals(
         ]
 
         if len(match) > 0:
-            entry["actual"] = float(match["qty"].sum())
+            new_actual = float(match["qty"].sum())
+        elif entry_date <= max_sales_date:
+            # Date is within sales data range but no record — means zero sold
+            new_actual = 0.0
+        else:
+            # Future date — no sales data yet, leave as-is
+            continue
+
+        if entry["actual"] != new_actual:
+            entry["actual"] = new_actual
             entry["error"] = round(entry["predicted"] - entry["actual"], 2)
             updated += 1
 
@@ -193,3 +229,152 @@ def generate_feedback_report(filepath: str = FEEDBACK_FILE) -> str:
 
     lines.append(f"\n{'=' * 70}")
     return "\n".join(lines)
+
+
+def export_feedback_to_excel(
+    output_path: str = "output/feedback_report.xlsx",
+    filepath: str = FEEDBACK_FILE,
+):
+    """Export all feedback history to a formatted Excel workbook."""
+    history = load_feedback_history(filepath)
+    if not history:
+        return None
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    completed = [h for h in history if h.get("actual") is not None]
+
+    if not completed:
+        # No actuals yet — write a placeholder sheet so the file isn't corrupted
+        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+            pd.DataFrame({"Status": ["No actual sales data recorded yet. Run --update-actuals first."]}).to_excel(
+                writer, sheet_name="Accuracy by Day", index=False
+            )
+        return output_path
+
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+        # Group entries by date
+        by_date = {}
+        for entry in completed:
+            by_date.setdefault(entry["date"], []).append(entry)
+
+        # One tab per date, sorted chronologically
+        for date_str in sorted(by_date.keys()):
+            entries = by_date[date_str]
+            rows = []
+            for entry in sorted(entries, key=lambda e: (e["store"], e["product"])):
+                predicted = entry["predicted"]
+                actual = entry["actual"]
+                mae = abs(int(predicted) - int(actual))
+                rows.append({
+                    "Store": entry["store"],
+                    "Product": entry["product"],
+                    "Predicted": int(predicted),
+                    "Actual": int(actual),
+                    "MAE": mae,
+                })
+
+            day_df = pd.DataFrame(rows)
+            # Use MM-DD format for tab name (sheet names max 31 chars)
+            tab_name = pd.Timestamp(date_str).strftime("%m-%d")
+            day_df.to_excel(writer, sheet_name=tab_name, index=False)
+
+        # Final tab: Accuracy Summary across all dates
+        summary_rows = []
+        groups = {}
+        for entry in completed:
+            key = (entry["store"], entry["product"])
+            groups.setdefault(key, []).append(entry)
+
+        for (store, product), entries in sorted(groups.items()):
+            actuals_arr = np.array([e["actual"] for e in entries])
+            predicted_arr = np.array([e["predicted"] for e in entries])
+            metrics = compute_metrics(actuals_arr, predicted_arr)
+            corrections = compute_correction_factors(filepath)
+            factor = corrections.get((store, product), 1.0)
+            summary_rows.append({
+                "Store": store,
+                "Product": product,
+                "Forecasts": len(entries),
+                "MAE": metrics["mae"],
+                "WMAPE (%)": metrics["wmape"],
+                "Bias": round(metrics["bias"], 2),
+                "Correction Factor": factor,
+            })
+
+        summary_df = pd.DataFrame(summary_rows)
+        summary_df.to_excel(writer, sheet_name="Accuracy Summary", index=False)
+
+        # Confidence tab: per store-product confidence rating
+        confidence_rows = []
+        for (store, product), entries in sorted(groups.items()):
+            n = len(entries)
+            actuals_arr = np.array([e["actual"] for e in entries])
+            predicted_arr = np.array([e["predicted"] for e in entries])
+            errors = np.abs(actuals_arr - predicted_arr)
+
+            mae = errors.mean()
+            avg_demand = actuals_arr.mean()
+            demand_std = actuals_arr.std() if n > 1 else 0
+            cv = (demand_std / avg_demand) if avg_demand > 0 else 0
+
+            # Score components (each 0-100, higher = more confident)
+            # 1. Data points: 3=low, 7=medium, 14+=high
+            data_score = min(100, (n / 14) * 100)
+
+            # 2. MAE relative to average demand
+            if avg_demand > 0:
+                error_ratio = mae / avg_demand
+                accuracy_score = max(0, (1 - error_ratio) * 100)
+            else:
+                accuracy_score = 50 if mae == 0 else 0
+
+            # 3. Demand stability (lower CV = more predictable)
+            stability_score = max(0, (1 - min(cv, 2) / 2) * 100)
+
+            # 4. Correction factor near 1.0 = model is well-calibrated
+            corrections = compute_correction_factors(filepath)
+            factor = corrections.get((store, product), 1.0)
+            calibration_score = max(0, (1 - abs(factor - 1.0)) * 100)
+
+            # Weighted overall confidence
+            overall = (
+                data_score * 0.30 +
+                accuracy_score * 0.35 +
+                stability_score * 0.20 +
+                calibration_score * 0.15
+            )
+
+            if overall >= 70:
+                level = "High"
+            elif overall >= 40:
+                level = "Medium"
+            else:
+                level = "Low"
+
+            confidence_rows.append({
+                "Store": store,
+                "Product": product,
+                "Confidence": level,
+                "Score": round(overall, 1),
+                "Data Points": n,
+                "Avg MAE": round(mae, 2),
+                "Avg Demand": round(avg_demand, 2),
+                "Demand CV": round(cv, 2),
+                "Correction Factor": factor,
+            })
+
+        conf_df = pd.DataFrame(confidence_rows)
+        conf_df.sort_values("Score", ascending=False, inplace=True)
+        conf_df.to_excel(writer, sheet_name="Confidence", index=False)
+
+        # Auto-fit column widths
+        for sheet_name in writer.sheets:
+            ws = writer.sheets[sheet_name]
+            for col_cells in ws.columns:
+                max_len = max(len(str(cell.value or "")) for cell in col_cells)
+                header_len = len(str(col_cells[0].value or ""))
+                width = max(max_len, header_len) + 2
+                ws.column_dimensions[col_cells[0].column_letter].width = width
+
+    return output_path

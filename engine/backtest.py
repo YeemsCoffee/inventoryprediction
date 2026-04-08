@@ -324,4 +324,3 @@ def generate_accuracy_report(
                      f"WMAPE={wmape}%, MAE={mae}, Total Actual={total:.0f}")
 
     lines.append(f"\n{'=' * 70}")
-    return "\n".join(lines)

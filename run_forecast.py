@@ -383,6 +383,175 @@ def run_seed_feedback(excel_path: str = "output/feedback_report.xlsx"):
         print(f"    {store} / {product}: x{factor} ({direction})")
 
 
+def run_backfill_feedback(data_dir: str = "."):
+    """
+    Retroactively compute predictions for dates in actuals that have no matching
+    forecast entry, then seed those (predicted, actual) pairs into forecast_history.json.
+
+    Use this when the model wasn't run during a past period but actuals exist in the
+    CSV files. Runs the ensemble model trained on data *before* each gap date so
+    predictions represent what the model would have made at that time.
+    """
+    from engine.feedback import load_feedback_history, save_feedback_history
+
+    print("\n[1/4] Loading data...")
+    raw = load_all_data(data_dir)
+    daily = build_daily_demand(raw)
+    print(f"  Date range: {daily['date'].min().date()} to {daily['date'].max().date()}")
+
+    # Find the last date already covered by predictions, then only fill forward from there
+    history = load_feedback_history()
+    covered_dates = set(
+        (e["store"], e["product"], e["date"])
+        for e in history
+    )
+
+    if history:
+        last_covered = max(e["date"] for e in history)
+        gap_start = pd.Timestamp(last_covered) + timedelta(days=1)
+    else:
+        gap_start = daily["date"].min()
+
+    actuals_by_date = daily.groupby(["store", "product", "date"])["qty"].sum().reset_index()
+    actuals_by_date["date_str"] = actuals_by_date["date"].dt.strftime("%Y-%m-%d")
+
+    # Only look at dates after the last covered prediction
+    missing = actuals_by_date[
+        (actuals_by_date["date"] >= gap_start) &
+        ~actuals_by_date.apply(
+            lambda r: (r["store"], r["product"], r["date_str"]) in covered_dates, axis=1
+        )
+    ]
+
+    if missing.empty:
+        print("  No gaps found — forecast_history.json is fully caught up.")
+        return
+
+    gap_dates = sorted(missing["date_str"].unique())
+    print(f"\n[2/4] Gap: {len(gap_dates)} uncovered dates ({gap_dates[0]} to {gap_dates[-1]})")
+    print(f"  {len(missing)} store/product/date combos to backfill")
+
+    # Build ensemble weights once using all data (backfill is retrospective — ok to use all data)
+    print("\n[3/4] Computing ensemble weights...")
+    bt_results = walk_forward_backtest(daily, test_days=7)
+    weights = evaluate_models(bt_results)
+    print(f"  Weights: DOW={weights['dow']:.0%}, Exp={weights['exp']:.0%}, GBT={weights['gbt']:.0%}")
+
+    features_all = build_feature_matrix(daily)
+    tier_map = get_tier_map(daily)
+
+    # Train GBT and SporadicModel on all data (retrospective — no look-ahead issue for backfill)
+    gbt = GBTModel()
+    gbt.fit(features_all)
+
+    sporadic_model = SporadicModel()
+    sporadic_features = features_all[features_all.apply(
+        lambda r: tier_map.get((r["store"], r["product"]), "low") == "sporadic", axis=1
+    )]
+    if len(sporadic_features) >= 20:
+        sporadic_model.fit(sporadic_features)
+
+    print(f"\n[4/4] Backfilling predictions...")
+    new_entries = []
+    stores = sorted(daily["store"].unique())
+    products = sorted(daily["product"].unique())
+    forecast_dates_all = pd.DatetimeIndex([pd.Timestamp(d) for d in gap_dates])
+
+    # Fit per-product models once on training data before the gap (faster than per-date)
+    training_cutoff = pd.Timestamp(gap_dates[0])
+    train_data = daily[daily["date"] < training_cutoff]
+
+    per_product_models = {}
+    for store in stores:
+        for product in products:
+            sp_train = train_data[
+                (train_data["store"] == store) & (train_data["product"] == product)
+            ]
+            if len(sp_train) < 7:
+                continue
+            dow_model = DayOfWeekModel()
+            exp_model = ExpSmoothingModel()
+            dow_model.fit(sp_train[["date", "qty"]])
+            exp_model.fit(sp_train[["date", "qty"]])
+            per_product_models[(store, product)] = (dow_model, exp_model, sp_train)
+
+    for store in stores:
+        for product in products:
+            sp_demand = daily[
+                (daily["store"] == store) & (daily["product"] == product)
+            ]
+            lane = classify_lane(product, sp_demand)
+            tier = tier_map.get((store, product), "low")
+            models = per_product_models.get((store, product))
+
+            for gap_date_str in gap_dates:
+                if (store, product, gap_date_str) in covered_dates:
+                    continue
+
+                actual_row = missing[
+                    (missing["store"] == store) &
+                    (missing["product"] == product) &
+                    (missing["date_str"] == gap_date_str)
+                ]
+                if actual_row.empty:
+                    continue
+
+                actual_qty = float(actual_row["qty"].iloc[0])
+                gap_date = pd.Timestamp(gap_date_str)
+                forecast_dates = pd.DatetimeIndex([gap_date])
+
+                if lane == "dormant":
+                    predicted = 0.0
+                elif lane == "intermittent":
+                    sp_train = sp_demand[sp_demand["date"] < training_cutoff]
+                    preds = predict_intermittent(sp_train, 1)
+                    predicted = float(preds[0])
+                elif lane == "periodic":
+                    sp_train = sp_demand[sp_demand["date"] < training_cutoff]
+                    preds = predict_periodic(sp_train, 1)
+                    predicted = float(preds[0])
+                else:
+                    if models is None:
+                        predicted = 0.0
+                    else:
+                        dow_model, exp_model, sp_train = models
+                        future_features = _build_future_features(sp_train, features_all, store, product, forecast_dates)
+                        if tier == "sporadic" and sporadic_model.is_fitted and future_features is not None:
+                            preds = sporadic_model.predict(future_features)
+                            predicted = max(0.0, float(preds[0]))
+                        else:
+                            dow_preds = dow_model.predict(forecast_dates)
+                            exp_preds = exp_model.predict(forecast_dates)
+                            if future_features is not None and gbt.is_fitted:
+                                gbt_preds = gbt.predict(future_features)
+                            else:
+                                gbt_preds = np.zeros(1)
+                            predicted = max(0.0, float(
+                                weights["dow"] * dow_preds[0] +
+                                weights["exp"] * exp_preds[0] +
+                                weights["gbt"] * gbt_preds[0]
+                            ))
+
+                new_entries.append({
+                    "store": store,
+                    "product": product,
+                    "date": gap_date_str,
+                    "predicted": round(predicted, 2),
+                    "actual": round(actual_qty, 2),
+                    "error": round(predicted - actual_qty, 2),
+                    "model_version": "v2_backfill",
+                    "recorded_at": gap_date_str + "T00:00:00",
+                })
+
+    history.extend(new_entries)
+    save_feedback_history(history)
+    print(f"  Added {len(new_entries)} backfilled entries")
+
+    result = export_feedback_to_excel(output_path="output/feedback_report.xlsx")
+    if result:
+        print(f"  Excel report updated: {result}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Inventory Prediction System v2")
     parser.add_argument("--days", type=int, default=14, help="Number of days to forecast")
@@ -396,6 +565,8 @@ def main():
                         help="Seed forecast_history.json from output/feedback_report.xlsx")
     parser.add_argument("--seed-feedback-path", type=str, default="output/feedback_report.xlsx",
                         help="Path to feedback_report.xlsx for --seed-feedback")
+    parser.add_argument("--backfill-feedback", action="store_true",
+                        help="Backfill predictions for dates in actuals not yet in forecast_history.json")
 
     args = parser.parse_args()
 
@@ -414,6 +585,8 @@ def main():
             print("No feedback history to export.")
     elif args.seed_feedback:
         run_seed_feedback(args.seed_feedback_path)
+    elif args.backfill_feedback:
+        run_backfill_feedback(args.data_dir)
     else:
         run_forecast(args.data_dir, args.days, args.output_dir)
 

@@ -22,8 +22,13 @@ def load_feedback_history(filepath: str = FEEDBACK_FILE) -> list:
             try:
                 return json.load(f)
             except json.JSONDecodeError:
-                print(f"WARNING: {filepath} is corrupted, starting fresh history")
-                return []
+                import shutil
+                backup = filepath + ".corrupted"
+                shutil.copy2(filepath, backup)
+                raise RuntimeError(
+                    f"{filepath} is corrupted (backed up to {backup}). "
+                    f"Restore with: git show HEAD:output/forecast_history.json > output/forecast_history.json"
+                )
     return []
 
 

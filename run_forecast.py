@@ -31,7 +31,8 @@ from engine.feedback import (
     generate_feedback_report, export_feedback_to_excel,
 )
 from engine.packing import apply_safety_stock, generate_packing_list_csv, print_packing_list, load_par_levels
-from config.products import STORES
+from engine.router import classify_lane, predict_intermittent, predict_periodic
+from config.products import STORES, PRODUCT_LANES, PERIODIC_PRODUCTS
 
 
 def run_backtest(data_dir: str = "."):
@@ -116,24 +117,48 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
 
     predictions = {}       # (store, product) -> np.array
     forecast_meta = {}     # (store, product) -> {"tier": str, "model": str}
+    lane_counts = {"daily": 0, "periodic": 0, "intermittent": 0, "dormant": 0}
 
     for store in stores:
         for product in products:
             sp_demand = daily[
                 (daily["store"] == store) & (daily["product"] == product)
             ]
-
             tier = tier_map.get((store, product), "low")
+            lane = classify_lane(product, sp_demand)
+            lane_counts[lane] += 1
 
-            # Build feature rows for future dates
+            # Lane 4 — Dormant: sustained near-zero demand, skip entirely
+            if lane == "dormant":
+                predictions[(store, product)] = np.zeros(num_days)
+                forecast_meta[(store, product)] = {"tier": tier, "model": "dormant"}
+                continue
+
+            # Lane 3 — Intermittent: P(order) × E[qty|order]
+            if lane == "intermittent":
+                preds = predict_intermittent(sp_demand, num_days)
+                preds = preds * corrections.get((store, product), 1.0)
+                predictions[(store, product)] = preds
+                forecast_meta[(store, product)] = {"tier": tier, "model": "intermittent_v1"}
+                continue
+
+            # Lane 2 — Periodic: avg_order_size / avg_interval
+            if lane == "periodic":
+                preds = predict_periodic(sp_demand, num_days)
+                preds = preds * corrections.get((store, product), 1.0)
+                predictions[(store, product)] = preds
+                forecast_meta[(store, product)] = {"tier": tier, "model": "periodic_v1"}
+                continue
+
+            # Lane 1 — Daily ML
             future_features = _build_future_features(sp_demand, features, store, product, forecast_dates)
 
-            # --- Sporadic tier: use two-stage model if fitted ---
+            # Sporadic tier within daily lane: use two-stage model if fitted
             if tier == "sporadic" and sporadic_model.is_fitted and future_features is not None:
                 preds = sporadic_model.predict(future_features)
                 model_name = "sporadic_v1"
             else:
-                # --- High / Low / fallback: use ensemble ---
+                # Ensemble: DOW + ExpSmoothing + GBT
                 dow_model = DayOfWeekModel()
                 exp_model = ExpSmoothingModel()
                 dow_model.fit(sp_demand[["date", "qty"]])
@@ -155,13 +180,14 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
                 model_name = "ensemble_v2"
 
             preds = np.maximum(0, preds)
-
-            # Apply feedback correction
-            correction = corrections.get((store, product), 1.0)
-            preds *= correction
-
+            preds *= corrections.get((store, product), 1.0)
             predictions[(store, product)] = preds
             forecast_meta[(store, product)] = {"tier": tier, "model": model_name}
+
+    print(f"  Lane routing: {lane_counts['daily']} daily, "
+          f"{lane_counts['periodic']} periodic, "
+          f"{lane_counts['intermittent']} intermittent, "
+          f"{lane_counts['dormant']} dormant")
 
     # --- Step 6: Apply safety stock and generate output ---
     print("\n[6/6] Applying safety stock and generating packing lists...")
@@ -292,6 +318,71 @@ def run_update_actuals(data_dir: str = "."):
         print(f"\n  Excel report saved to: {result}")
 
 
+def run_seed_feedback(excel_path: str = "output/feedback_report.xlsx"):
+    """
+    Seed forecast_history.json from feedback_report.xlsx.
+
+    The Excel file has one sheet per day (MM-DD) with columns:
+    Store, Product, Predicted, Actual, MAE
+
+    This is a one-time setup step — run it whenever forecast_history.json
+    is missing or you want to re-seed from the Excel actuals.
+    """
+    import json
+    import openpyxl
+
+    if not os.path.exists(excel_path):
+        print(f"  ERROR: {excel_path} not found.")
+        return
+
+    print(f"\n  Reading {excel_path}...")
+    wb = openpyxl.load_workbook(excel_path)
+    skip_sheets = {"Accuracy Summary", "Confidence"}
+    daily_sheets = [s for s in wb.sheetnames if s not in skip_sheets]
+
+    history = []
+    year = pd.Timestamp.now().year
+    for sheet_name in daily_sheets:
+        try:
+            month, day = map(int, sheet_name.split("-"))
+        except ValueError:
+            continue
+        date_str = f"{year}-{month:02d}-{day:02d}"
+        ws = wb[sheet_name]
+        rows = list(ws.iter_rows(values_only=True))
+        for row in rows[1:]:
+            if row[0] is None:
+                continue
+            store, product, predicted, actual, _ = row
+            predicted = float(predicted or 0)
+            actual = float(actual or 0)
+            history.append({
+                "store": store,
+                "product": product,
+                "date": date_str,
+                "predicted": round(predicted, 2),
+                "actual": round(actual, 2),
+                "error": round(predicted - actual, 2),
+                "model_version": "v2",
+                "recorded_at": f"{date_str}T00:00:00",
+            })
+
+    os.makedirs("output", exist_ok=True)
+    feedback_path = "output/forecast_history.json"
+    with open(feedback_path, "w") as f:
+        json.dump(history, f, indent=2)
+
+    print(f"  Seeded {len(history)} entries into {feedback_path}")
+
+    from engine.feedback import compute_correction_factors
+    corrections = compute_correction_factors()
+    active = {k: v for k, v in corrections.items() if v != 1.0}
+    print(f"  Correction factors active: {len(active)} products")
+    for (store, product), factor in sorted(active.items(), key=lambda x: abs(x[1] - 1), reverse=True)[:10]:
+        direction = "scale down" if factor < 1 else "scale up"
+        print(f"    {store} / {product}: x{factor} ({direction})")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Inventory Prediction System v2")
     parser.add_argument("--days", type=int, default=14, help="Number of days to forecast")
@@ -301,6 +392,10 @@ def main():
     parser.add_argument("--update-actuals", action="store_true", help="Update feedback with actual sales")
     parser.add_argument("--feedback-report", action="store_true", help="Show feedback loop report")
     parser.add_argument("--export-feedback", action="store_true", help="Export feedback history to Excel")
+    parser.add_argument("--seed-feedback", action="store_true",
+                        help="Seed forecast_history.json from output/feedback_report.xlsx")
+    parser.add_argument("--seed-feedback-path", type=str, default="output/feedback_report.xlsx",
+                        help="Path to feedback_report.xlsx for --seed-feedback")
 
     args = parser.parse_args()
 
@@ -317,6 +412,8 @@ def main():
             print(f"Feedback report exported to: {result}")
         else:
             print("No feedback history to export.")
+    elif args.seed_feedback:
+        run_seed_feedback(args.seed_feedback_path)
     else:
         run_forecast(args.data_dir, args.days, args.output_dir)
 

@@ -21,8 +21,11 @@ from sqlalchemy import func
 from warehouse_app.extensions import db
 from warehouse_app.models.actual_order import ActualOrder
 from warehouse_app.models.daily_usage import DailyUsage
+from warehouse_app.models.inventory_item import InventoryItem
 from warehouse_app.models.inventory_snapshot import InventorySnapshot
 from warehouse_app.models.store_item_setting import StoreItemSetting
+
+from config.products import PERIODIC_PRODUCTS, PRODUCT_LANES
 
 VALID_FORECAST_METHODS = ('historical_simple_v1', 'historical_weighted_v1')
 
@@ -453,36 +456,308 @@ def _build_weighted_forecast(store_id, item_id, plan_date,
     }
 
 
+# ── Lane routing helpers ─────────────────────────────────────────────
+
+def _get_demand_stats(store_id, item_id, plan_date, window_days):
+    """
+    Compute demand statistics over a lookback window for lane classification.
+
+    Uses the same ActualOrder-over-DailyUsage priority as get_average_orders.
+
+    Returns a dict:
+        zero_rate    — fraction of recorded days with zero demand (0.0–1.0)
+        avg_demand   — mean daily demand including zeros
+        avg_nonzero  — mean demand on order-days only
+        cv           — coefficient of variation of non-zero quantities
+        n_days       — total days with any record in the window
+        n_order_days — days where quantity > 0
+    """
+    start_date = plan_date - timedelta(days=window_days)
+    end_date = plan_date - timedelta(days=1)
+
+    demand_by_date = {}
+
+    usage_rows = db.session.query(
+        DailyUsage.usage_date, DailyUsage.quantity_used,
+    ).filter(
+        DailyUsage.store_id == store_id,
+        DailyUsage.item_id == item_id,
+        DailyUsage.usage_date >= start_date,
+        DailyUsage.usage_date <= end_date,
+    ).all()
+    for row_date, qty in usage_rows:
+        demand_by_date[row_date] = float(qty or 0)
+
+    order_rows = db.session.query(
+        ActualOrder.order_date, ActualOrder.quantity_ordered,
+    ).filter(
+        ActualOrder.store_id == store_id,
+        ActualOrder.item_id == item_id,
+        ActualOrder.order_date >= start_date,
+        ActualOrder.order_date <= end_date,
+    ).all()
+    for row_date, qty in order_rows:
+        demand_by_date[row_date] = float(qty or 0)
+
+    if not demand_by_date:
+        return {
+            'zero_rate': 1.0, 'avg_demand': 0.0, 'avg_nonzero': 0.0,
+            'cv': 0.0, 'n_days': 0, 'n_order_days': 0,
+        }
+
+    qtys = list(demand_by_date.values())
+    n_days = len(qtys)
+    nonzero_qtys = [q for q in qtys if q > 0]
+    n_order_days = len(nonzero_qtys)
+
+    zero_rate = 1.0 - (n_order_days / n_days)
+    avg_demand = sum(qtys) / n_days
+    avg_nonzero = sum(nonzero_qtys) / n_order_days if n_order_days > 0 else 0.0
+
+    if n_order_days > 1:
+        mean = avg_nonzero
+        variance = sum((q - mean) ** 2 for q in nonzero_qtys) / (n_order_days - 1)
+        cv = (variance ** 0.5) / mean if mean > 0 else 0.0
+    else:
+        cv = 0.0
+
+    return {
+        'zero_rate': zero_rate,
+        'avg_demand': avg_demand,
+        'avg_nonzero': avg_nonzero,
+        'cv': cv,
+        'n_days': n_days,
+        'n_order_days': n_order_days,
+    }
+
+
+def _classify_lane(item_name, stats, dormant_threshold, intermittent_threshold):
+    """
+    Determine the forecast lane for a product.
+
+    Priority:
+    1. Explicit override in PRODUCT_LANES — always wins.
+    2. No demand data at all → dormant.
+    3. Zero-rate >= dormant_threshold → dormant (Lane 4).
+    4. Zero-rate >= intermittent_threshold → intermittent (Lane 3).
+    5. Item in PERIODIC_PRODUCTS → periodic (Lane 2).
+    6. Default → daily ML (Lane 1).
+
+    Returns: 'daily' | 'periodic' | 'intermittent' | 'dormant'
+    """
+    if item_name in PRODUCT_LANES:
+        return PRODUCT_LANES[item_name]
+
+    if stats['n_days'] == 0:
+        return 'dormant'
+
+    if stats['zero_rate'] >= dormant_threshold:
+        return 'dormant'
+
+    if stats['zero_rate'] >= intermittent_threshold:
+        return 'intermittent'
+
+    if item_name in PERIODIC_PRODUCTS:
+        return 'periodic'
+
+    return 'daily'
+
+
+# ── Lane 4: Dormant ──────────────────────────────────────────────────
+
+def _build_dormant_forecast(store_id, item_id, plan_date, stats, window_days):
+    """
+    Lane 4 — Dormant: near-zero sustained demand; default to zero.
+    Still assesses on-hand and propagates missing-snapshot warnings.
+    """
+    if stats['n_days'] > 0:
+        explanations = [
+            f"Dormant: {stats['n_order_days']}/{stats['n_days']} order-days "
+            f"in {window_days}-day window (zero rate {stats['zero_rate']:.0%})"
+        ]
+    else:
+        explanations = ['Dormant: no demand history in lookback window']
+
+    warnings = ['dormant_product', 'sparse_usage_history', 'low_confidence']
+
+    on_hand, on_hand_date, confidence = _assess_on_hand(
+        store_id, item_id, plan_date, 'low', explanations, warnings,
+        avg_daily_usage=Decimal('0'),
+    )
+
+    return {
+        'avg_daily_usage': Decimal('0'),
+        'confidence': confidence,
+        'window_days': window_days,
+        'data_points': stats['n_days'],
+        'data_coverage': _compute_coverage(stats['n_days'], window_days),
+        'data_source': 'actual_orders' if stats['n_order_days'] > 0 else 'none',
+        'on_hand': on_hand,
+        'on_hand_date': on_hand_date,
+        'explanations': explanations,
+        'warnings': warnings,
+        'forecast_method': 'dormant_v1',
+        'forecast_lane': 'dormant',
+    }
+
+
+# ── Lane 3: Intermittent ─────────────────────────────────────────────
+
+def _build_intermittent_forecast(store_id, item_id, plan_date, stats, window_days):
+    """
+    Lane 3 — Intermittent: bursty, low-frequency demand.
+
+    Expected daily demand = P(order today) × E[qty | order occurs].
+    This avoids over-forecasting by not treating zero-order days as signal
+    that demand is 0; instead it asks: when we do order, how much?
+    """
+    explanations = []
+    warnings = ['intermittent_demand']
+
+    n_days = stats['n_days']
+    n_order_days = stats['n_order_days']
+    avg_nonzero = stats['avg_nonzero']
+
+    if n_order_days == 0:
+        expected_daily = Decimal('0')
+        confidence = 'low'
+        warnings += ['sparse_usage_history', 'low_confidence']
+        explanations.append('Intermittent: no orders in lookback window')
+    else:
+        order_freq = n_order_days / n_days
+        expected_daily = Decimal(str(round(order_freq * avg_nonzero, 4)))
+        explanations.append(
+            f"Intermittent: {n_order_days} orders in {n_days} days "
+            f"(freq {order_freq:.0%}, avg {avg_nonzero:.1f} when ordered "
+            f"→ {float(expected_daily):.2f}/day expected)"
+        )
+        confidence = 'medium' if n_order_days >= 3 else 'low'
+        if confidence == 'low':
+            warnings += ['sparse_usage_history', 'low_confidence']
+
+    on_hand, on_hand_date, confidence = _assess_on_hand(
+        store_id, item_id, plan_date, confidence, explanations, warnings,
+        avg_daily_usage=expected_daily,
+    )
+
+    return {
+        'avg_daily_usage': expected_daily,
+        'confidence': confidence,
+        'window_days': window_days,
+        'data_points': n_order_days,
+        'data_coverage': _compute_coverage(n_days, window_days),
+        'data_source': 'actual_orders' if n_order_days > 0 else 'none',
+        'on_hand': on_hand,
+        'on_hand_date': on_hand_date,
+        'explanations': explanations,
+        'warnings': warnings,
+        'forecast_method': 'intermittent_v1',
+        'forecast_lane': 'intermittent',
+    }
+
+
+# ── Lane 2: Periodic ─────────────────────────────────────────────────
+
+def _build_periodic_forecast(store_id, item_id, plan_date, stats,
+                              window_days, delivery_window):
+    """
+    Lane 2 — Periodic: products ordered on a regular 2-3 day cadence.
+
+    Rather than predicting a daily quantity (which looks noisy because
+    orders cluster), this lane computes:
+
+        avg_daily_usage = avg_order_size / avg_inter_order_interval
+
+    The resulting rate is smooth and correct over the delivery cycle.
+    Downstream replenishment logic (par level, safety stock) applies as normal.
+    """
+    explanations = []
+    warnings = ['periodic_demand']
+
+    n_days = stats['n_days']
+    n_order_days = stats['n_order_days']
+    avg_nonzero = stats['avg_nonzero']
+
+    if n_order_days == 0:
+        expected_daily = Decimal('0')
+        confidence = 'low'
+        warnings += ['sparse_usage_history', 'low_confidence']
+        explanations.append('Periodic: no orders in lookback window')
+    else:
+        avg_interval = n_days / n_order_days  # observed mean days between orders
+        # Use the observed interval, but floor it at delivery_window to prevent
+        # over-smoothing when the store orders more frequently than expected.
+        effective_interval = max(avg_interval, float(delivery_window))
+        expected_daily = Decimal(str(round(avg_nonzero / effective_interval, 4)))
+        explanations.append(
+            f"Periodic: {n_order_days} orders in {n_days} days "
+            f"(avg interval {avg_interval:.1f}d, avg size {avg_nonzero:.1f} "
+            f"→ {float(expected_daily):.2f}/day over {effective_interval:.1f}d window)"
+        )
+        confidence = 'medium' if n_order_days >= 4 else 'low'
+        if confidence == 'low':
+            warnings += ['sparse_usage_history', 'low_confidence']
+
+    on_hand, on_hand_date, confidence = _assess_on_hand(
+        store_id, item_id, plan_date, confidence, explanations, warnings,
+        avg_daily_usage=expected_daily,
+    )
+
+    return {
+        'avg_daily_usage': expected_daily,
+        'confidence': confidence,
+        'window_days': window_days,
+        'data_points': n_order_days,
+        'data_coverage': _compute_coverage(n_days, window_days),
+        'data_source': 'actual_orders' if n_order_days > 0 else 'none',
+        'on_hand': on_hand,
+        'on_hand_date': on_hand_date,
+        'explanations': explanations,
+        'warnings': warnings,
+        'forecast_method': 'periodic_v1',
+        'forecast_lane': 'periodic',
+    }
+
+
 # ── Public dispatch ──────────────────────────────────────────────────
 
 def build_forecast(store_id, item_id, plan_date):
     """
     Build a demand forecast for one store-item pair.
 
-    Uses actual store orders as the primary data source. If no actual order
-    data exists, falls back to daily usage history.
+    Routes through a 4-lane system based on demand characteristics and
+    explicit product overrides, then dispatches to the appropriate builder.
 
-    Dispatches to the appropriate forecast builder based on FORECAST_METHOD config.
+    Lane 1 — daily:       stable daily-use items; weighted or simple average.
+    Lane 2 — periodic:    items ordered on a ~2-3 day cadence (cups, lids, sleeves).
+    Lane 3 — intermittent: lumpy/bursty items; P(order) × E[qty|order].
+    Lane 4 — dormant:     near-zero sustained demand; defaults to zero.
 
     Returns a dict with:
-        avg_daily_usage: Decimal - forecasted daily demand
-        confidence: str - 'high', 'medium', or 'low'
-        window_days: int - the usage window that was used
-        data_points: int - number of data points in the chosen window
-        data_coverage: float - fraction of window days with data (0.0-1.0)
-        data_source: str - 'actual_orders', 'daily_usage', or 'none'
-        on_hand: Decimal | None - latest on-hand quantity
-        on_hand_date: date | None - date of the latest snapshot
-        explanations: list[str] - human-readable explanation steps
-        warnings: list[str] - warning flags
-        forecast_method: str - versioned method name
+        avg_daily_usage:  Decimal — forecasted daily demand
+        confidence:       str — 'high', 'medium', or 'low'
+        window_days:      int — lookback window used
+        data_points:      int — data points in the chosen window
+        data_coverage:    float — fraction of window days with data (0.0-1.0)
+        data_source:      str — 'actual_orders', 'daily_usage', or 'none'
+        on_hand:          Decimal | None — latest on-hand quantity
+        on_hand_date:     date | None — date of latest snapshot
+        explanations:     list[str] — human-readable explanation steps
+        warnings:         list[str] — warning flags
+        forecast_method:  str — versioned method name
+        forecast_lane:    str — routing lane ('daily'|'periodic'|'intermittent'|'dormant')
     """
+    # ── Config ───────────────────────────────────────────────
     forecast_method = current_app.config.get('FORECAST_METHOD', 'historical_simple_v1')
     window_short = current_app.config.get('DEFAULT_USAGE_WINDOW_SHORT', 7)
     window_long = current_app.config.get('DEFAULT_USAGE_WINDOW_LONG', 14)
     min_data_points = current_app.config.get('MIN_DATA_POINTS_HIGH_CONFIDENCE', 5)
+    routing_window = current_app.config.get('LANE_ROUTING_WINDOW', 28)
+    dormant_threshold = current_app.config.get('LANE_DORMANT_ZERO_RATE', 0.95)
+    intermittent_threshold = current_app.config.get('LANE_INTERMITTENT_ZERO_RATE', 0.65)
+    delivery_window = current_app.config.get('LANE_PERIODIC_DELIVERY_WINDOW', 3)
 
-    # Per-setting override for usage window
+    # Per-setting override for usage window (daily lane only)
     setting = StoreItemSetting.query.filter_by(
         store_id=store_id, item_id=item_id, active=True,
     ).first()
@@ -490,17 +765,37 @@ def build_forecast(store_id, item_id, plan_date):
         window_short = setting.usage_window_days
         window_long = max(window_short * 2, window_long)
 
+    # ── Route ────────────────────────────────────────────────
+    item = db.session.get(InventoryItem, item_id)
+    item_name = item.item_name if item else ''
+
+    stats = _get_demand_stats(store_id, item_id, plan_date, routing_window)
+    lane = _classify_lane(item_name, stats, dormant_threshold, intermittent_threshold)
+
+    # ── Dispatch ─────────────────────────────────────────────
+    if lane == 'dormant':
+        return _build_dormant_forecast(store_id, item_id, plan_date, stats, routing_window)
+
+    if lane == 'intermittent':
+        return _build_intermittent_forecast(store_id, item_id, plan_date, stats, routing_window)
+
+    if lane == 'periodic':
+        return _build_periodic_forecast(
+            store_id, item_id, plan_date, stats, routing_window, delivery_window)
+
+    # Lane 1 — Daily ML
     if forecast_method == 'historical_weighted_v1':
         decay_factor = current_app.config.get('WEIGHTED_DECAY_FACTOR', 0.9)
         dow_multiplier = current_app.config.get('WEIGHTED_DOW_MULTIPLIER', 0.0)
-        return _build_weighted_forecast(
+        result = _build_weighted_forecast(
             store_id, item_id, plan_date,
             window_short, window_long, min_data_points,
             decay_factor, dow_multiplier,
         )
-
-    # Default: historical_simple_v1
-    return _build_simple_forecast(
-        store_id, item_id, plan_date,
-        window_short, window_long, min_data_points,
-    )
+    else:
+        result = _build_simple_forecast(
+            store_id, item_id, plan_date,
+            window_short, window_long, min_data_points,
+        )
+    result['forecast_lane'] = 'daily'
+    return result

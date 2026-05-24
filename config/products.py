@@ -125,6 +125,22 @@ PRODUCT_LANES = {
     "Paper Towel":          "intermittent",
     "Paper Bag":            "intermittent",
     "Sanchez (retail)":     "intermittent",
+
+    # Cleaning & sundry supplies — ordered infrequently in bulk,
+    # tend to sit at/near zero-rate threshold and get misclassified as dormant
+    "Dish Detergent":       "intermittent",
+    "Black Trash Bag":      "intermittent",
+    "Nitrile Gloves":       "intermittent",
+    "Bleach":               "intermittent",
+    "Floor Cleaner":        "intermittent",
+    "Toilet Solution":      "intermittent",
+    "Cafiza":               "intermittent",
+    "Rinza":                "intermittent",
+    "Wooden Stir Stick":    "intermittent",
+    "Beverage Napkin":      "intermittent",
+    "Lid Plug":             "intermittent",
+    "Cocoa Box":            "intermittent",
+    "Pastry Bag, Brown":    "intermittent",
 }
 
 # Stores

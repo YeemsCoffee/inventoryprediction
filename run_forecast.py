@@ -135,17 +135,20 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
                 continue
 
             # Lane 3 — Intermittent: P(order) × E[qty|order]
+            # No correction factor: the formula directly encodes observed ordering
+            # frequency and size from recent history, so it's already self-correcting.
+            # Historical corrections were computed when daily predictions rounded to 0,
+            # making them unreliable (0 × 2x = 0).
             if lane == "intermittent":
                 preds = predict_intermittent(sp_demand, num_days)
-                preds = preds * corrections.get((store, product), 1.0)
                 predictions[(store, product)] = preds
                 forecast_meta[(store, product)] = {"tier": tier, "model": "intermittent_v1"}
                 continue
 
             # Lane 2 — Periodic: avg_order_size / avg_interval
+            # Same reasoning — no correction factor applied.
             if lane == "periodic":
                 preds = predict_periodic(sp_demand, num_days)
-                preds = preds * corrections.get((store, product), 1.0)
                 predictions[(store, product)] = preds
                 forecast_meta[(store, product)] = {"tier": tier, "model": "periodic_v1"}
                 continue
@@ -197,6 +200,28 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
     for key in predictions:
         predictions[key] = np.round(predictions[key]).astype(int)
 
+    # Record forecasts for feedback loop BEFORE consolidation (daily granularity for accurate matching)
+    forecast_entries = []
+    for (store, product), preds in predictions.items():
+        for i, d in enumerate(forecast_dates):
+            forecast_entries.append((store, product, d.strftime("%Y-%m-%d"), int(preds[i])))
+    record_forecasts_batch(forecast_entries, metadata=forecast_meta)
+
+    # Consolidate intermittent/periodic items: sum the full window into day 1.
+    # These items aren't ordered daily — showing a total quantity for the period
+    # is more actionable than spreading a fractional daily rate across every row.
+    packing_predictions = {}
+    for key, preds in predictions.items():
+        meta = forecast_meta.get(key, {})
+        if meta.get("model") in ("intermittent_v1", "periodic_v1"):
+            total = int(preds.sum())
+            consolidated = np.zeros(len(preds), dtype=int)
+            if total > 0:
+                consolidated[0] = total
+            packing_predictions[key] = consolidated
+        else:
+            packing_predictions[key] = preds
+
     # Load par levels if the file exists
     par_xlsx = os.path.join(data_dir, "Store Max Items.xlsx")
     par_levels = load_par_levels(par_xlsx) if os.path.exists(par_xlsx) else None
@@ -207,18 +232,11 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
 
     # Print to console
     for store in stores:
-        print_packing_list(predictions, forecast_dates, store, par_levels=par_levels)
+        print_packing_list(packing_predictions, forecast_dates, store, par_levels=par_levels)
 
     # Export CSVs
     print()
-    filepaths = generate_packing_list_csv(predictions, forecast_dates, stores, output_dir, par_levels=par_levels)
-
-    # Record forecasts for feedback loop (single batch write)
-    forecast_entries = []
-    for (store, product), preds in predictions.items():
-        for i, d in enumerate(forecast_dates):
-            forecast_entries.append((store, product, d.strftime("%Y-%m-%d"), int(preds[i])))
-    record_forecasts_batch(forecast_entries, metadata=forecast_meta)
+    filepaths = generate_packing_list_csv(packing_predictions, forecast_dates, stores, output_dir, par_levels=par_levels)
 
     print(f"\n  Forecast period: {forecast_dates[0].strftime('%m/%d/%Y')} - {forecast_dates[-1].strftime('%m/%d/%Y')}")
     print(f"  Output saved to: {output_dir}/")

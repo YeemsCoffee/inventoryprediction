@@ -122,9 +122,33 @@ PRODUCT_LANES = {
     "Toilet Paper":         "intermittent",
     "Receipt rolls":        "intermittent",
     "Cup Carriers":         "intermittent",
+    "2 Cup Carrier":        "intermittent",
+    "4 Cup Carrier":        "intermittent",
     "Paper Towel":          "intermittent",
     "Paper Bag":            "intermittent",
     "Sanchez (retail)":     "intermittent",
+
+    # Bar syrups & flavors — ordered in single units every few days,
+    # not daily — zero_rate consistently 0.65–0.90 across stores
+    "Caramel":              "intermittent",
+    "Dulce":                "intermittent",
+    "Honey":                "intermittent",
+    "Lavender":             "intermittent",
+    "Mocha":                "intermittent",
+    "Rose":                 "intermittent",
+    "Tonic Water":          "intermittent",
+    "Musco Syrup":          "intermittent",
+
+    # Dairy & milk alternatives ordered infrequently
+    "Black Straws":         "intermittent",
+    "Condensed Milk":       "intermittent",
+    "Decaf Beans":          "intermittent",
+    "Half & Half":          "intermittent",
+    "Hot Lid":              "intermittent",
+    "Passionfruit Puree":   "intermittent",
+    "Sugar Tub":            "intermittent",
+    "Ube Condensed Milk":   "intermittent",
+    "10oz Hot Cup":         "intermittent",
 
     # Cleaning & sundry supplies — ordered infrequently in bulk,
     # tend to sit at/near zero-rate threshold and get misclassified as dormant

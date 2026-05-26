@@ -135,17 +135,20 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
                 continue
 
             # Lane 3 — Intermittent: P(order) × E[qty|order]
+            # No correction factor: the formula directly encodes observed ordering
+            # frequency and size from recent history, so it's already self-correcting.
+            # Historical corrections were computed when daily predictions rounded to 0,
+            # making them unreliable (0 × 2x = 0).
             if lane == "intermittent":
                 preds = predict_intermittent(sp_demand, num_days)
-                preds = preds * corrections.get((store, product), 1.0)
                 predictions[(store, product)] = preds
                 forecast_meta[(store, product)] = {"tier": tier, "model": "intermittent_v1"}
                 continue
 
             # Lane 2 — Periodic: avg_order_size / avg_interval
+            # Same reasoning — no correction factor applied.
             if lane == "periodic":
                 preds = predict_periodic(sp_demand, num_days)
-                preds = preds * corrections.get((store, product), 1.0)
                 predictions[(store, product)] = preds
                 forecast_meta[(store, product)] = {"tier": tier, "model": "periodic_v1"}
                 continue

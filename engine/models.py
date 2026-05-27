@@ -13,6 +13,25 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
+def _recency_weights(df: pd.DataFrame, half_life: int) -> np.ndarray | None:
+    """
+    Compute exponentially-decaying sample weights based on row dates.
+
+    Most-recent row → weight 1.0, half_life days back → 0.5, etc.
+    Returns weights normalized so they sum to len(df), keeping sklearn's
+    effective learning rate roughly equivalent to the unweighted case.
+
+    Returns None if `date` column is missing or half_life <= 0.
+    """
+    if half_life <= 0 or "date" not in df.columns:
+        return None
+    dates = pd.to_datetime(df["date"])
+    days_ago = (dates.max() - dates).dt.days.values
+    w = np.exp(-np.log(2) / half_life * days_ago)
+    # Normalize so weights sum to n (prevents learning-rate scaling artifacts).
+    return w * (len(w) / w.sum())
+
+
 # ---------------------------------------------------------------------------
 # Model 1: Enhanced Day-of-Week (improved version of original)
 # ---------------------------------------------------------------------------
@@ -140,12 +159,13 @@ class GBTModel:
         "rolling_mean_7", "rolling_mean_14", "rolling_mean_28",
         "rolling_std_7", "rolling_std_14",
         "rolling_max_7",
+        "last_order_qty",
         "trend_7_28",
         "days_since_last_order",
         "product_hist_avg", "product_cv", "order_frequency",
     ]
 
-    def __init__(self):
+    def __init__(self, recency_half_life: int = None):
         self.model = GradientBoostingRegressor(
             loss=FORECAST_CONFIG["gbt_loss"],
             alpha=FORECAST_CONFIG["gbt_huber_alpha"],
@@ -155,6 +175,10 @@ class GBTModel:
             subsample=FORECAST_CONFIG["gbt_subsample"],
             min_samples_leaf=FORECAST_CONFIG["gbt_min_samples_leaf"],
             random_state=42,
+        )
+        self.recency_half_life = (
+            recency_half_life if recency_half_life is not None
+            else FORECAST_CONFIG.get("gbt_recency_half_life", 30)
         )
         self.is_fitted = False
 
@@ -166,8 +190,9 @@ class GBTModel:
 
         X = df[self.FEATURE_COLS].values
         y = df["qty"].values
+        sample_weight = _recency_weights(df, self.recency_half_life)
 
-        self.model.fit(X, y)
+        self.model.fit(X, y, sample_weight=sample_weight)
         self.is_fitted = True
         return self
 
@@ -198,7 +223,7 @@ class SporadicModel:
 
     FEATURE_COLS = GBTModel.FEATURE_COLS  # reuse same features
 
-    def __init__(self):
+    def __init__(self, recency_half_life: int = None):
         self.classifier = GradientBoostingClassifier(
             n_estimators=50,
             max_depth=3,
@@ -217,6 +242,10 @@ class SporadicModel:
             min_samples_leaf=3,
             random_state=42,
         )
+        self.recency_half_life = (
+            recency_half_life if recency_half_life is not None
+            else FORECAST_CONFIG.get("gbt_recency_half_life", 30)
+        )
         self.is_fitted = False
         self.prob_threshold = FORECAST_CONFIG.get("sporadic_classifier_threshold", 0.5)
 
@@ -228,6 +257,7 @@ class SporadicModel:
 
         X = df[self.FEATURE_COLS].values
         y = df["qty"].values
+        sample_weight = _recency_weights(df, self.recency_half_life)
 
         # Stage 1: classify non-zero demand
         y_binary = (y > 0).astype(int)
@@ -236,12 +266,13 @@ class SporadicModel:
         if y_binary.sum() < 3 or (y_binary == 0).sum() < 3:
             return self
 
-        self.classifier.fit(X, y_binary)
+        self.classifier.fit(X, y_binary, sample_weight=sample_weight)
 
         # Stage 2: regressor on non-zero days only
         nonzero_mask = y > 0
         if nonzero_mask.sum() >= 5:
-            self.regressor.fit(X[nonzero_mask], y[nonzero_mask])
+            sw_nz = sample_weight[nonzero_mask] if sample_weight is not None else None
+            self.regressor.fit(X[nonzero_mask], y[nonzero_mask], sample_weight=sw_nz)
             self.is_fitted = True
 
         return self

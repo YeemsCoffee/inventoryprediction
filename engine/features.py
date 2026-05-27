@@ -54,6 +54,14 @@ def add_lag_features(df: pd.DataFrame, lags=(1, 7, 14)) -> pd.DataFrame:
         .transform(lambda x: x.shift(1).rolling(7, min_periods=1).max())
     )
 
+    # Last nonzero order qty — carries forward the size of the most recent
+    # actual order. Distinct from lag_1 (which is 0 on non-order days).
+    # shift(1) prevents look-ahead — today's row sees up to yesterday only.
+    df["last_order_qty"] = (
+        df.groupby(["store", "product"])["qty"]
+        .transform(lambda x: x.shift(1).replace(0, np.nan).ffill().fillna(0))
+    )
+
     return df
 
 

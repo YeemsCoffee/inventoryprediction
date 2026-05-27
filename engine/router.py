@@ -13,9 +13,32 @@ import numpy as np
 import pandas as pd
 from config.products import PRODUCT_LANES, PERIODIC_PRODUCTS
 
-# Days of demand history used to compute routing signals.
+# Primary routing window — used for lane classification and intermittent prediction.
 # Kept separate from the forecast window so lane assignment stays stable.
 ROUTING_WINDOW = 28
+
+# Minimum order days required for a reliable frequency estimate.
+# If the primary window has fewer, we extend to EXTENDED_WINDOWS in order.
+MIN_ORDER_DAYS = 3
+EXTENDED_WINDOWS = [60, 90]
+
+
+def _get_demand_window(sp_demand: pd.DataFrame, min_orders: int = MIN_ORDER_DAYS) -> pd.DataFrame:
+    """
+    Return the shortest lookback window that contains at least min_orders order days.
+
+    Tries ROUTING_WINDOW first (28d), then EXTENDED_WINDOWS (60d, 90d), then
+    full history. Falls back to the 28-day slice if no orders exist at all.
+
+    This prevents monthly items (e.g. Cafiza, Rinza) from being starved of
+    signal when the 28-day window happens to have 0 orders.
+    """
+    for window in [ROUTING_WINDOW] + EXTENDED_WINDOWS + [len(sp_demand)]:
+        recent = sp_demand.tail(window)
+        if int((recent["qty"] > 0).sum()) >= min_orders:
+            return recent
+    # No orders in any window — return the standard slice for dormant detection
+    return sp_demand.tail(ROUTING_WINDOW)
 
 
 def classify_lane(product: str, sp_demand: pd.DataFrame) -> str:
@@ -24,11 +47,15 @@ def classify_lane(product: str, sp_demand: pd.DataFrame) -> str:
 
     Priority:
     1. Explicit override in PRODUCT_LANES (config/products.py) — always wins.
-    2. Dynamic classification from the most recent ROUTING_WINDOW days:
-       - zero-rate >= 95%  → dormant   (Lane 4)
+    2. Dynamic classification using an adaptive lookback window:
+       - zero-rate >= 95%  → dormant      (Lane 4)
        - zero-rate >= 65%  → intermittent (Lane 3)
-       - in PERIODIC_PRODUCTS → periodic (Lane 2)
+       - in PERIODIC_PRODUCTS → periodic  (Lane 2)
        - otherwise         → daily ML ensemble (Lane 1)
+
+    The adaptive window extends to 60 or 90 days when the 28-day window has
+    fewer than MIN_ORDER_DAYS orders, preventing monthly items from being
+    misclassified as dormant due to an unlucky recent window.
 
     sp_demand: daily demand DataFrame (columns: date, qty).
                Pass training-data-only slice during backtesting to avoid
@@ -39,7 +66,7 @@ def classify_lane(product: str, sp_demand: pd.DataFrame) -> str:
     if product in PRODUCT_LANES:
         return PRODUCT_LANES[product]
 
-    recent = sp_demand.tail(ROUTING_WINDOW)
+    recent = _get_demand_window(sp_demand)
     n_days = len(recent)
     if n_days == 0 or recent["qty"].sum() == 0:
         return "dormant"
@@ -60,12 +87,13 @@ def predict_intermittent(sp_demand: pd.DataFrame, num_days: int) -> np.ndarray:
     """
     Lane 3 — Intermittent: P(order) × E[qty | order] as a flat daily rate.
 
-    Separates order probability from order size so that zero-order days
-    do not suppress the forecast the way a plain average would.
+    Uses an adaptive lookback window (28 → 60 → 90 → full history) to ensure
+    at least MIN_ORDER_DAYS data points, so monthly items get a stable
+    frequency estimate rather than a noise-driven near-zero rate.
 
     sp_demand: demand history (training data only when backtesting).
     """
-    recent = sp_demand.tail(ROUTING_WINDOW)
+    recent = _get_demand_window(sp_demand)
     nonzero = recent[recent["qty"] > 0]["qty"]
     if len(nonzero) == 0:
         return np.zeros(num_days)
@@ -85,7 +113,7 @@ def predict_periodic(sp_demand: pd.DataFrame, num_days: int,
 
     sp_demand: demand history (training data only when backtesting).
     """
-    recent = sp_demand.tail(ROUTING_WINDOW)
+    recent = _get_demand_window(sp_demand)
     nonzero = recent[recent["qty"] > 0]["qty"]
     if len(nonzero) == 0:
         return np.zeros(num_days)

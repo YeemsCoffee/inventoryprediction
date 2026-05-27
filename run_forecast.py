@@ -31,7 +31,7 @@ from engine.feedback import (
     generate_feedback_report, export_feedback_to_excel,
 )
 from engine.packing import apply_safety_stock, generate_packing_list_csv, print_packing_list, load_par_levels
-from engine.router import classify_lane, predict_intermittent, predict_periodic, ROUTING_WINDOW
+from engine.router import classify_lane, predict_intermittent, predict_periodic, ROUTING_WINDOW, _get_demand_window
 from config.products import STORES, PRODUCT_LANES, PERIODIC_PRODUCTS
 
 
@@ -218,21 +218,28 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
         meta = forecast_meta.get(key, {})
         if meta.get("model") in ("intermittent_v1", "periodic_v1"):
             sp = daily[(daily["store"] == store) & (daily["product"] == product)]
-            recent = sp.tail(ROUTING_WINDOW)
+            recent = _get_demand_window(sp)   # use same adaptive window as predict_intermittent
             nonzero = recent[recent["qty"] > 0]["qty"]
             n_order = len(nonzero)
 
-            if n_order == 0 or preds.sum() < 0.5:
+            if n_order == 0:
                 packing_predictions[key] = np.zeros(len(preds), dtype=int)
             else:
                 avg_interval = max(1, round(len(recent) / n_order))
                 avg_qty = max(1, round(nonzero.mean()))
-                scheduled = np.zeros(len(preds), dtype=int)
-                day = 0
-                while day < len(preds):
-                    scheduled[day] = avg_qty
-                    day += avg_interval
-                packing_predictions[key] = scheduled
+                # Use expected period demand (not rounded daily preds) as the gate.
+                # Rounded preds are always 0 for monthly items (0.044/day → 0),
+                # so preds.sum() would block scheduling even on a 28-day window.
+                expected_for_period = (len(preds) / avg_interval) * avg_qty
+                if expected_for_period < 0.5:
+                    packing_predictions[key] = np.zeros(len(preds), dtype=int)
+                else:
+                    scheduled = np.zeros(len(preds), dtype=int)
+                    day = 0
+                    while day < len(preds):
+                        scheduled[day] = avg_qty
+                        day += avg_interval
+                    packing_predictions[key] = scheduled
         else:
             packing_predictions[key] = preds
 

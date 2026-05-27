@@ -94,12 +94,13 @@ def generate_packing_list_csv(
     Write packing list CSVs (one per store).
     Returns list of generated file paths.
     par_levels: dict of (store, product) -> max_quantity. If provided, totals are capped at par.
+    Items with par level > 0 but 0 predicted demand are included as a 'Check Stock' section.
     """
     os.makedirs(output_dir, exist_ok=True)
     filepaths = []
 
     for store in stores:
-        # Collect products for this store
+        # Collect products with predicted demand >= 1
         store_products = {}
         for (s, product), preds in predictions.items():
             if s != store:
@@ -109,7 +110,16 @@ def generate_packing_list_csv(
             if total >= 1:
                 store_products[product] = (rounded, total)
 
-        # Sort by total descending
+        # Collect stocked items with no predicted demand (par > 0, prediction = 0)
+        check_stock = []
+        if par_levels:
+            predicted_products = set(store_products.keys())
+            for (s, product), par in par_levels.items():
+                if s == store and par > 0 and product not in predicted_products:
+                    check_stock.append((product, par))
+            check_stock.sort(key=lambda x: x[0])
+
+        # Sort predicted products by total descending
         sorted_products = sorted(store_products.items(), key=lambda x: x[1][1], reverse=True)
 
         date_str = dates[0].strftime("%Y-%m-%d")
@@ -154,6 +164,16 @@ def generate_packing_list_csv(
                 totals_row += [""]
             writer.writerow(totals_row)
 
+            # Check stock section — stocked items with no predicted demand this period
+            if check_stock:
+                writer.writerow([])
+                writer.writerow(["CHECK STOCK (no demand predicted — verify on hand)"] + [""] * (len(dates) + 1))
+                for product, par in check_stock:
+                    row = [product] + [""] * len(dates) + ["0"]
+                    if show_par:
+                        row.append(par)
+                    writer.writerow(row)
+
         filepaths.append(filepath)
         print(f"  Saved: {filepath}")
 
@@ -175,6 +195,15 @@ def print_packing_list(
         total = rounded.sum()
         if total >= 1:
             store_products[product] = (rounded, total)
+
+    # Items stocked (par > 0) but with no predicted demand this period
+    check_stock = []
+    if par_levels:
+        predicted_products = set(store_products.keys())
+        for (s, product), par in par_levels.items():
+            if s == store and par > 0 and product not in predicted_products:
+                check_stock.append((product, par))
+        check_stock.sort(key=lambda x: x[0])
 
     sorted_products = sorted(store_products.items(), key=lambda x: x[1][1], reverse=True)
 
@@ -223,3 +252,10 @@ def print_packing_list(
         totals_line += f"{int(v):>7}"
     totals_line += f"{int(grand_total_by_day.sum()):>8}"
     print(totals_line)
+
+    # Check stock section
+    if check_stock:
+        print(f"\n  CHECK STOCK — no demand predicted, verify on hand:")
+        print("  " + "-" * 50)
+        for product, par in check_stock:
+            print(f"  {product:<28}  (max: {par})")

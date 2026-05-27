@@ -31,7 +31,7 @@ from engine.feedback import (
     generate_feedback_report, export_feedback_to_excel,
 )
 from engine.packing import apply_safety_stock, generate_packing_list_csv, print_packing_list, load_par_levels
-from engine.router import classify_lane, predict_intermittent, predict_periodic
+from engine.router import classify_lane, predict_intermittent, predict_periodic, ROUTING_WINDOW
 from config.products import STORES, PRODUCT_LANES, PERIODIC_PRODUCTS
 
 
@@ -207,18 +207,32 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
             forecast_entries.append((store, product, d.strftime("%Y-%m-%d"), int(preds[i])))
     record_forecasts_batch(forecast_entries, metadata=forecast_meta)
 
-    # Consolidate intermittent/periodic items: sum the full window into day 1.
-    # These items aren't ordered daily — showing a total quantity for the period
-    # is more actionable than spreading a fractional daily rate across every row.
+    # Schedule intermittent/periodic deliveries at the item's natural reorder interval.
+    # Instead of collapsing everything into day 1, we place avg_qty on day 0,
+    # then again every avg_interval days through the forecast window.
+    # This mirrors actual ordering cadence — e.g. Black Straws every ~3 days gets
+    # [1, ·, ·, 1, ·, ·, ·, 1, ·, ·, ·, 1, ·, ·] rather than [4, ·, ·, ·, ...].
     packing_predictions = {}
-    for key, preds in predictions.items():
+    for (store, product), preds in predictions.items():
+        key = (store, product)
         meta = forecast_meta.get(key, {})
         if meta.get("model") in ("intermittent_v1", "periodic_v1"):
-            total = int(preds.sum())
-            consolidated = np.zeros(len(preds), dtype=int)
-            if total > 0:
-                consolidated[0] = total
-            packing_predictions[key] = consolidated
+            sp = daily[(daily["store"] == store) & (daily["product"] == product)]
+            recent = sp.tail(ROUTING_WINDOW)
+            nonzero = recent[recent["qty"] > 0]["qty"]
+            n_order = len(nonzero)
+
+            if n_order == 0 or preds.sum() < 0.5:
+                packing_predictions[key] = np.zeros(len(preds), dtype=int)
+            else:
+                avg_interval = max(1, round(len(recent) / n_order))
+                avg_qty = max(1, round(nonzero.mean()))
+                scheduled = np.zeros(len(preds), dtype=int)
+                day = 0
+                while day < len(preds):
+                    scheduled[day] = avg_qty
+                    day += avg_interval
+                packing_predictions[key] = scheduled
         else:
             packing_predictions[key] = preds
 

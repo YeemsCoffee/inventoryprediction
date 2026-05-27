@@ -48,7 +48,7 @@ def compute_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict:
 
 def walk_forward_backtest(
     daily_demand: pd.DataFrame,
-    test_days: int = 7,
+    test_days: int = 14,
     step_size: int = 1,
 ) -> pd.DataFrame:
     """

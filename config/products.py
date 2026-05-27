@@ -197,4 +197,9 @@ FORECAST_CONFIG = {
 
     # Sporadic model: two-stage classifier + regressor
     "sporadic_classifier_threshold": 0.5,  # probability threshold for "will order today"
+
+    # Recency weighting for GBT training (sample_weight = exp(-ln(2)/half_life * days_ago)).
+    # Half-life of 30 days: day-0 sample weight 1.0, 30 days ago 0.5, 90 days ago 0.125.
+    # Set to 0 to disable recency weighting and treat all training samples equally.
+    "gbt_recency_half_life": 30,
 }

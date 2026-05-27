@@ -22,7 +22,7 @@ from datetime import timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from engine.ingest import load_all_data, build_daily_demand
-from engine.features import build_feature_matrix
+from engine.features import build_feature_matrix, build_future_features
 from engine.models import DayOfWeekModel, ExpSmoothingModel, GBTModel, SporadicModel, EnsembleForecaster
 from engine.backtest import walk_forward_backtest, evaluate_models, generate_accuracy_report
 from engine.features import get_tier_map
@@ -45,7 +45,8 @@ def run_backtest(data_dir: str = "."):
     daily = build_daily_demand(raw)
 
     print("\n[3/3] Running walk-forward backtest...")
-    results = walk_forward_backtest(daily, test_days=14)
+    features = build_feature_matrix(daily)
+    results = walk_forward_backtest(daily, features_df=features, test_days=14)
 
     weights = evaluate_models(results)
     report = generate_accuracy_report(results, weights)
@@ -78,7 +79,7 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
 
     # --- Step 4: Backtest to determine model weights ---
     print("\n[4/6] Backtesting models to determine ensemble weights...")
-    bt_results = walk_forward_backtest(daily, test_days=14)
+    bt_results = walk_forward_backtest(daily, features_df=features, test_days=14)
     weights = evaluate_models(bt_results)
     print(f"  Ensemble weights: DOW={weights['dow']:.0%}, ExpSmooth={weights['exp']:.0%}, GBT={weights['gbt']:.0%}")
 
@@ -97,18 +98,44 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
         tier_counts[t] = tier_counts.get(t, 0) + 1
     print(f"  Volume tiers: {', '.join(f'{k}={v}' for k, v in sorted(tier_counts.items()))}")
 
-    # Train GBT globally (serves high + low volume items)
-    gbt = GBTModel()
-    gbt.fit(features)
+    # Pre-classify all lanes so we can filter training data correctly.
+    # GBT and SporadicModel should only train on rows they actually serve in
+    # production (daily-lane items), preventing intermittent/periodic behavior
+    # from leaking into the ML model used exclusively for Lane 1.
+    lane_map = {}
+    lane_counts = {"daily": 0, "periodic": 0, "intermittent": 0, "dormant": 0}
+    for store in stores:
+        for product in products:
+            sp_demand = daily[(daily["store"] == store) & (daily["product"] == product)]
+            lane = classify_lane(product, sp_demand)
+            lane_map[(store, product)] = lane
+            lane_counts[lane] += 1
 
-    # Train sporadic two-stage model on sporadic-tier data only
+    # Filter feature matrix to daily-lane rows only for GBT training
+    daily_lane_pairs = {k for k, v in lane_map.items() if v == "daily"}
+
+    def _is_daily_lane(row):
+        return (row["store"], row["product"]) in daily_lane_pairs
+
+    daily_features = features[features.apply(_is_daily_lane, axis=1)]
+
+    # Train GBT on daily-lane rows only
+    gbt = GBTModel()
+    gbt.fit(daily_features)
+    print(f"  GBT trained on {len(daily_features)} daily-lane rows ({len(daily_lane_pairs)} store-product pairs)")
+
+    # Train sporadic model on daily-lane + sporadic-tier rows only
     sporadic_model = SporadicModel()
-    sporadic_features = features[features.apply(
+    sporadic_features = daily_features[daily_features.apply(
         lambda r: tier_map.get((r["store"], r["product"]), "low") == "sporadic", axis=1
     )]
+    n_sporadic_pairs = sum(
+        1 for (s, p) in daily_lane_pairs
+        if tier_map.get((s, p), "low") == "sporadic"
+    )
     if len(sporadic_features) >= 20:
         sporadic_model.fit(sporadic_features)
-        print(f"  Sporadic model trained on {len(sporadic_features)} rows ({tier_counts.get('sporadic', 0)} items)")
+        print(f"  Sporadic model trained on {len(sporadic_features)} rows ({n_sporadic_pairs} items)")
     else:
         print(f"  Sporadic model: not enough data ({len(sporadic_features)} rows), using ensemble fallback")
 
@@ -117,7 +144,6 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
 
     predictions = {}       # (store, product) -> np.array
     forecast_meta = {}     # (store, product) -> {"tier": str, "model": str}
-    lane_counts = {"daily": 0, "periodic": 0, "intermittent": 0, "dormant": 0}
 
     for store in stores:
         for product in products:
@@ -125,8 +151,7 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
                 (daily["store"] == store) & (daily["product"] == product)
             ]
             tier = tier_map.get((store, product), "low")
-            lane = classify_lane(product, sp_demand)
-            lane_counts[lane] += 1
+            lane = lane_map[(store, product)]
 
             # Lane 4 — Dormant: sustained near-zero demand, skip entirely
             if lane == "dormant":
@@ -154,7 +179,7 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
                 continue
 
             # Lane 1 — Daily ML
-            future_features = _build_future_features(sp_demand, features, store, product, forecast_dates)
+            future_features = build_future_features(sp_demand, store, product, forecast_dates)
 
             # Sporadic tier within daily lane: use two-stage model if fitted
             if tier == "sporadic" and sporadic_model.is_fitted and future_features is not None:
@@ -267,73 +292,6 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
     print(report)
 
     return predictions
-
-
-def _build_future_features(
-    sp_demand: pd.DataFrame,
-    all_features: pd.DataFrame,
-    store: str,
-    product: str,
-    forecast_dates: pd.DatetimeIndex,
-) -> pd.DataFrame:
-    """Build feature rows for future dates for GBT prediction."""
-    if sp_demand["qty"].sum() == 0:
-        return None
-
-    rows = []
-    sp = sp_demand.sort_values("date")
-    last_qty = sp["qty"].iloc[-1] if len(sp) > 0 else 0
-    recent_7 = sp["qty"].tail(7)
-    recent_14 = sp["qty"].tail(14)
-    recent_28 = sp["qty"].tail(28)
-
-    hist_avg = sp["qty"].mean()
-    hist_std = sp["qty"].std() if len(sp) > 1 else 0
-    cv = (hist_std / hist_avg) if hist_avg > 0 else 0
-    order_freq = (sp["qty"] > 0).mean()
-
-    rm7 = recent_7.mean()
-    rm14 = recent_14.mean()
-    rm28 = recent_28.mean()
-    rs7 = recent_7.std() if len(recent_7) > 1 else 0
-    rs14 = recent_14.std() if len(recent_14) > 1 else 0
-    rmax7 = recent_7.max()
-    trend = (rm7 / rm28) if rm28 > 0 else 1.0
-
-    last_order_date = sp[sp["qty"] > 0]["date"].max() if (sp["qty"] > 0).any() else sp["date"].min()
-    last_order_qty = float(sp[sp["qty"] > 0]["qty"].iloc[-1]) if (sp["qty"] > 0).any() else 0.0
-
-    for i, d in enumerate(forecast_dates):
-        dow = d.dayofweek
-        row = {
-            "dow": dow,
-            "day_of_month": d.day,
-            "is_weekend": int(dow >= 5),
-            "is_monday": int(dow == 0),
-            "is_friday": int(dow == 4),
-            "dow_sin": np.sin(2 * np.pi * dow / 7),
-            "dow_cos": np.cos(2 * np.pi * dow / 7),
-            "dom_sin": np.sin(2 * np.pi * d.day / 31),
-            "dom_cos": np.cos(2 * np.pi * d.day / 31),
-            "lag_1": last_qty,
-            "lag_7": recent_7.iloc[0] if len(recent_7) > 0 else 0,
-            "lag_14": recent_14.iloc[0] if len(recent_14) > 0 else 0,
-            "rolling_mean_7": rm7,
-            "rolling_mean_14": rm14,
-            "rolling_mean_28": rm28,
-            "rolling_std_7": rs7,
-            "rolling_std_14": rs14,
-            "rolling_max_7": rmax7,
-            "last_order_qty": last_order_qty,
-            "trend_7_28": np.clip(trend, 0.2, 5.0),
-            "days_since_last_order": (d - last_order_date).days if pd.notna(last_order_date) else 0,
-            "product_hist_avg": hist_avg,
-            "product_cv": np.clip(cv, 0, 10),
-            "order_frequency": order_freq,
-        }
-        rows.append(row)
-
-    return pd.DataFrame(rows)
 
 
 def run_update_actuals(data_dir: str = "."):
@@ -469,7 +427,8 @@ def run_backfill_feedback(data_dir: str = "."):
 
     # Build ensemble weights once using all data (backfill is retrospective — ok to use all data)
     print("\n[3/4] Computing ensemble weights...")
-    bt_results = walk_forward_backtest(daily, test_days=14)
+    backfill_features = build_feature_matrix(daily)
+    bt_results = walk_forward_backtest(daily, features_df=backfill_features, test_days=14)
     weights = evaluate_models(bt_results)
     print(f"  Weights: DOW={weights['dow']:.0%}, Exp={weights['exp']:.0%}, GBT={weights['gbt']:.0%}")
 
@@ -551,7 +510,7 @@ def run_backfill_feedback(data_dir: str = "."):
                         predicted = 0.0
                     else:
                         dow_model, exp_model, sp_train = models
-                        future_features = _build_future_features(sp_train, features_all, store, product, forecast_dates)
+                        future_features = build_future_features(sp_train, store, product, forecast_dates)
                         if tier == "sporadic" and sporadic_model.is_fitted and future_features is not None:
                             preds = sporadic_model.predict(future_features)
                             predicted = max(0.0, float(preds[0]))

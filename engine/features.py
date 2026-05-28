@@ -155,3 +155,80 @@ def build_feature_matrix(daily_demand: pd.DataFrame) -> pd.DataFrame:
     df = add_product_features(df)
     df = add_volume_tier(df)
     return df
+
+
+def build_future_features(
+    sp_demand: pd.DataFrame,
+    store: str,
+    product: str,
+    forecast_dates: pd.DatetimeIndex,
+) -> pd.DataFrame:
+    """
+    Build GBT inference feature rows for future dates.
+
+    Uses the tail of sp_demand (training data only) to compute lag/rolling
+    stats, then projects them forward across forecast_dates.
+
+    Note: lag and rolling features are frozen at the last training date and
+    reused across the full horizon — this is a static approximation, not
+    recursive forecasting. Adequate for near-term stability.
+
+    Returns None if the product has zero historical demand.
+    """
+    if sp_demand["qty"].sum() == 0:
+        return None
+
+    rows = []
+    sp = sp_demand.sort_values("date")
+    last_qty = sp["qty"].iloc[-1] if len(sp) > 0 else 0
+    recent_7 = sp["qty"].tail(7)
+    recent_14 = sp["qty"].tail(14)
+    recent_28 = sp["qty"].tail(28)
+
+    hist_avg = sp["qty"].mean()
+    hist_std = sp["qty"].std() if len(sp) > 1 else 0
+    cv = (hist_std / hist_avg) if hist_avg > 0 else 0
+    order_freq = (sp["qty"] > 0).mean()
+
+    rm7 = recent_7.mean()
+    rm14 = recent_14.mean()
+    rm28 = recent_28.mean()
+    rs7 = recent_7.std() if len(recent_7) > 1 else 0
+    rs14 = recent_14.std() if len(recent_14) > 1 else 0
+    rmax7 = recent_7.max()
+    trend = (rm7 / rm28) if rm28 > 0 else 1.0
+
+    last_order_date = sp[sp["qty"] > 0]["date"].max() if (sp["qty"] > 0).any() else sp["date"].min()
+    last_order_qty = float(sp[sp["qty"] > 0]["qty"].iloc[-1]) if (sp["qty"] > 0).any() else 0.0
+
+    for d in forecast_dates:
+        dow = d.dayofweek
+        row = {
+            "dow": dow,
+            "day_of_month": d.day,
+            "is_weekend": int(dow >= 5),
+            "is_monday": int(dow == 0),
+            "is_friday": int(dow == 4),
+            "dow_sin": np.sin(2 * np.pi * dow / 7),
+            "dow_cos": np.cos(2 * np.pi * dow / 7),
+            "dom_sin": np.sin(2 * np.pi * d.day / 31),
+            "dom_cos": np.cos(2 * np.pi * d.day / 31),
+            "lag_1": last_qty,
+            "lag_7": recent_7.iloc[0] if len(recent_7) > 0 else 0,
+            "lag_14": recent_14.iloc[0] if len(recent_14) > 0 else 0,
+            "rolling_mean_7": rm7,
+            "rolling_mean_14": rm14,
+            "rolling_mean_28": rm28,
+            "rolling_std_7": rs7,
+            "rolling_std_14": rs14,
+            "rolling_max_7": rmax7,
+            "last_order_qty": last_order_qty,
+            "trend_7_28": np.clip(trend, 0.2, 5.0),
+            "days_since_last_order": (d - last_order_date).days if pd.notna(last_order_date) else 0,
+            "product_hist_avg": hist_avg,
+            "product_cv": np.clip(cv, 0, 10),
+            "order_frequency": order_freq,
+        }
+        rows.append(row)
+
+    return pd.DataFrame(rows)

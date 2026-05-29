@@ -22,10 +22,9 @@ from datetime import timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from engine.ingest import load_all_data, build_daily_demand
-from engine.features import build_feature_matrix, build_future_features
+from engine.features import build_feature_matrix, build_future_features, predict_gbt_recursive, get_tier_map
 from engine.models import DayOfWeekModel, ExpSmoothingModel, GBTModel, SporadicModel, EnsembleForecaster
-from engine.backtest import walk_forward_backtest, evaluate_models, generate_accuracy_report
-from engine.features import get_tier_map
+from engine.backtest import walk_forward_backtest, evaluate_models, evaluate_models_per_product, generate_accuracy_report
 from engine.feedback import (
     compute_correction_factors, record_forecasts_batch, update_actuals,
     generate_feedback_report, export_feedback_to_excel,
@@ -49,7 +48,8 @@ def run_backtest(data_dir: str = "."):
     results = walk_forward_backtest(daily, features_df=features, test_days=14)
 
     weights = evaluate_models(results)
-    report = generate_accuracy_report(results, weights)
+    per_product_weights = evaluate_models_per_product(results, weights)
+    report = generate_accuracy_report(results, weights, per_product_weights=per_product_weights)
     print(report)
 
     return weights
@@ -81,7 +81,9 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
     print("\n[4/6] Backtesting models to determine ensemble weights...")
     bt_results = walk_forward_backtest(daily, features_df=features, test_days=14)
     weights = evaluate_models(bt_results)
-    print(f"  Ensemble weights: DOW={weights['dow']:.0%}, ExpSmooth={weights['exp']:.0%}, GBT={weights['gbt']:.0%}")
+    per_product_weights = evaluate_models_per_product(bt_results, weights)
+    print(f"  Global weights: DOW={weights['dow']:.0%}, ExpSmooth={weights['exp']:.0%}, GBT={weights['gbt']:.0%}")
+    print(f"  Per-product weights computed for {len(per_product_weights)} daily-lane items")
 
     # --- Step 5: Train and predict ---
     print("\n[5/6] Training models and generating forecasts...")
@@ -111,33 +113,39 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
             lane_map[(store, product)] = lane
             lane_counts[lane] += 1
 
-    # Filter feature matrix to daily-lane rows only for GBT training
+    # Filter feature matrix to daily-lane rows only for GBT/sporadic training.
+    # Train one model per store — captures store-specific demand patterns.
     daily_lane_pairs = {k for k, v in lane_map.items() if v == "daily"}
+    gbt_per_store = {}
+    sporadic_per_store = {}
+    total_gbt_rows = 0
 
-    def _is_daily_lane(row):
-        return (row["store"], row["product"]) in daily_lane_pairs
+    for store in stores:
+        store_pairs = {(s, p) for (s, p) in daily_lane_pairs if s == store}
+        if not store_pairs:
+            continue
 
-    daily_features = features[features.apply(_is_daily_lane, axis=1)]
+        store_daily = features[
+            features.apply(lambda r, _p=store_pairs: (r["store"], r["product"]) in _p, axis=1)
+        ]
+        if len(store_daily) >= 20:
+            gbt_s = GBTModel()
+            gbt_s.fit(store_daily)
+            gbt_per_store[store] = gbt_s
+            total_gbt_rows += len(store_daily)
 
-    # Train GBT on daily-lane rows only
-    gbt = GBTModel()
-    gbt.fit(daily_features)
-    print(f"  GBT trained on {len(daily_features)} daily-lane rows ({len(daily_lane_pairs)} store-product pairs)")
+        store_sporadic = store_daily[store_daily.apply(
+            lambda r: tier_map.get((r["store"], r["product"]), "low") == "sporadic", axis=1
+        )]
+        if len(store_sporadic) >= 20:
+            spo_s = SporadicModel()
+            spo_s.fit(store_sporadic)
+            sporadic_per_store[store] = spo_s
 
-    # Train sporadic model on daily-lane + sporadic-tier rows only
-    sporadic_model = SporadicModel()
-    sporadic_features = daily_features[daily_features.apply(
-        lambda r: tier_map.get((r["store"], r["product"]), "low") == "sporadic", axis=1
-    )]
-    n_sporadic_pairs = sum(
-        1 for (s, p) in daily_lane_pairs
-        if tier_map.get((s, p), "low") == "sporadic"
-    )
-    if len(sporadic_features) >= 20:
-        sporadic_model.fit(sporadic_features)
-        print(f"  Sporadic model trained on {len(sporadic_features)} rows ({n_sporadic_pairs} items)")
-    else:
-        print(f"  Sporadic model: not enough data ({len(sporadic_features)} rows), using ensemble fallback")
+    print(f"  Per-store GBT trained: {', '.join(gbt_per_store)} ({total_gbt_rows} total daily-lane rows)")
+    sporadic_counts = {s: sum(1 for (st, p) in daily_lane_pairs if st == s and tier_map.get((st, p), "low") == "sporadic") for s in sporadic_per_store}
+    if sporadic_per_store:
+        print(f"  Per-store sporadic model trained: {', '.join(f'{s}({n})' for s, n in sporadic_counts.items())}")
 
     # Get correction factors from feedback loop
     corrections = compute_correction_factors()
@@ -179,14 +187,16 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
                 continue
 
             # Lane 1 — Daily ML
-            future_features = build_future_features(sp_demand, store, product, forecast_dates)
+            gbt = gbt_per_store.get(store)
+            sporadic_model = sporadic_per_store.get(store)
+            prod_weights = per_product_weights.get((store, product), weights)
 
             # Sporadic tier within daily lane: use two-stage model if fitted
-            if tier == "sporadic" and sporadic_model.is_fitted and future_features is not None:
-                preds = sporadic_model.predict(future_features)
+            if tier == "sporadic" and sporadic_model is not None and sporadic_model.is_fitted:
+                preds = predict_gbt_recursive(sporadic_model, sp_demand, store, product, forecast_dates)
                 model_name = "sporadic_v1"
             else:
-                # Ensemble: DOW + ExpSmoothing + GBT
+                # Ensemble: DOW + ExpSmoothing + GBT (recursive lag updates for GBT)
                 dow_model = DayOfWeekModel()
                 exp_model = ExpSmoothingModel()
                 dow_model.fit(sp_demand[["date", "qty"]])
@@ -195,15 +205,15 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
                 dow_preds = dow_model.predict(forecast_dates)
                 exp_preds = exp_model.predict(forecast_dates)
 
-                if future_features is not None and gbt.is_fitted:
-                    gbt_preds = gbt.predict(future_features)
+                if gbt is not None and gbt.is_fitted:
+                    gbt_preds = predict_gbt_recursive(gbt, sp_demand, store, product, forecast_dates)
                 else:
                     gbt_preds = np.zeros(num_days)
 
                 preds = (
-                    weights["dow"] * dow_preds +
-                    weights["exp"] * exp_preds +
-                    weights["gbt"] * gbt_preds
+                    prod_weights["dow"] * dow_preds +
+                    prod_weights["exp"] * exp_preds +
+                    prod_weights["gbt"] * gbt_preds
                 )
                 model_name = "ensemble_v2"
 
@@ -288,7 +298,7 @@ def run_forecast(data_dir: str = ".", num_days: int = 14, output_dir: str = "out
     print(f"  Output saved to: {output_dir}/")
 
     # Show backtest accuracy
-    report = generate_accuracy_report(bt_results, weights)
+    report = generate_accuracy_report(bt_results, weights, per_product_weights=per_product_weights)
     print(report)
 
     return predictions

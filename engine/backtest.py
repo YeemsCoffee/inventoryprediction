@@ -14,7 +14,7 @@ import pandas as pd
 from datetime import timedelta
 from engine.models import DayOfWeekModel, ExpSmoothingModel, GBTModel
 from engine.router import classify_lane, predict_intermittent, predict_periodic
-from engine.features import build_future_features, build_feature_matrix
+from engine.features import build_feature_matrix, predict_gbt_recursive
 from config.products import FORECAST_CONFIG
 
 
@@ -122,22 +122,28 @@ def walk_forward_backtest(
             if lane == "daily":
                 daily_lane_pairs.add((store, product))
 
-    # ── Train GBT on daily-lane training rows only ────────────────────────
-    # This matches production: GBT only serves daily-lane items, so training
-    # on intermittent/periodic rows just adds noise.
-    gbt = GBTModel()
-    if daily_lane_pairs:
-        def _is_daily_lane(row):
-            return (row["store"], row["product"]) in daily_lane_pairs
-        daily_train_features = train_features[
-            train_features.apply(_is_daily_lane, axis=1)
+    # ── Train per-store GBT on daily-lane training rows only ─────────────
+    # Per-store models capture store-specific demand patterns.
+    # Only daily-lane rows are used — intermittent/periodic add noise.
+    gbt_per_store = {}
+    total_gbt_rows = 0
+    for store in stores:
+        store_pairs = {(s, p) for (s, p) in daily_lane_pairs if s == store}
+        if not store_pairs:
+            continue
+        store_train = train_features[
+            train_features.apply(lambda r, _p=store_pairs: (r["store"], r["product"]) in _p, axis=1)
         ]
-        if len(daily_train_features) >= 20:
-            gbt.fit(daily_train_features)
+        if len(store_train) >= 20:
+            gbt_s = GBTModel()
+            gbt_s.fit(store_train)
+            gbt_per_store[store] = gbt_s
+            total_gbt_rows += len(store_train)
 
     counts_str = ", ".join(f"{v} {k}" for k, v in lane_counts.items() if v > 0)
     print(f"  Lane assignments: {counts_str}")
-    print(f"  GBT trained on {len(daily_train_features) if daily_lane_pairs else 0} daily-lane rows")
+    store_list = ", ".join(f"{s}" for s in gbt_per_store)
+    print(f"  Per-store GBT trained ({total_gbt_rows} daily-lane rows across: {store_list})")
 
     # ── Per-product prediction loop ───────────────────────────────────────
     results = []
@@ -198,10 +204,10 @@ def walk_forward_backtest(
             dow_preds = dow_model.predict(test_dates)
             exp_preds = exp_model.predict(test_dates)
 
-            # GBT: build feature rows from training data, predict test period
-            future_feats = build_future_features(train, store, product, test_dates)
-            if future_feats is not None and gbt.is_fitted:
-                gbt_preds = gbt.predict(future_feats)
+            # GBT: recursive prediction using store-specific model
+            gbt = gbt_per_store.get(store)
+            if gbt is not None and gbt.is_fitted:
+                gbt_preds = predict_gbt_recursive(gbt, train, store, product, test_dates)
             else:
                 gbt_preds = np.zeros(num_test)
 
@@ -262,9 +268,62 @@ def evaluate_models(backtest_results: pd.DataFrame) -> dict:
     return weights
 
 
+def evaluate_models_per_product(
+    backtest_results: pd.DataFrame,
+    global_weights: dict,
+    min_obs: int = 7,
+) -> dict:
+    """
+    Derive per-(store, product) ensemble weights from backtest results.
+
+    Products with fewer than min_obs test-period observations fall back to
+    global_weights (too few data points to trust product-level error estimates).
+
+    Returns {(store, product): {"dow": w1, "exp": w2, "gbt": w3}}.
+    """
+    if backtest_results.empty:
+        return {}
+
+    daily = backtest_results[backtest_results["lane"] == "daily"].dropna(
+        subset=["pred_dow", "pred_exp"]
+    )
+    if daily.empty:
+        return {}
+
+    metric_key = FORECAST_CONFIG.get("ensemble_weight_metric", "mae")
+    result = {}
+
+    for (store, product), group in daily.groupby(["store", "product"]):
+        if len(group) < min_obs:
+            continue
+
+        model_cols = {"dow": "pred_dow", "exp": "pred_exp"}
+        if "pred_gbt" in group.columns and group["pred_gbt"].notna().any():
+            model_cols["gbt"] = "pred_gbt"
+
+        local_weights = {}
+        for name, col in model_cols.items():
+            valid = group.dropna(subset=[col])
+            if valid.empty:
+                local_weights[name] = 0.0
+                continue
+            m = compute_metrics(valid["actual"].values, valid[col].values)
+            err = m.get(metric_key, 100)
+            local_weights[name] = 1.0 / max(err, 1e-3)
+
+        if "gbt" not in local_weights:
+            local_weights["gbt"] = global_weights.get("gbt", 0.33) * sum(local_weights.values())
+
+        total = sum(local_weights.values())
+        result[(store, product)] = {k: round(v / total, 3) for k, v in local_weights.items()}
+
+    return result
+
+
 def generate_accuracy_report(
     backtest_results: pd.DataFrame,
     weights: dict,
+    per_product_weights: dict = None,
 ) -> str:
     """
     Generate a human-readable accuracy report broken down by forecast lane.
@@ -291,26 +350,43 @@ def generate_accuracy_report(
 
     br = backtest_results.copy()
 
-    # Fill pred_lane for daily products using ensemble weights
+    # Fill pred_lane for daily products.
+    # Use per-product weights when available, fall back to global.
     daily_mask = br["lane"] == "daily"
+    has_gbt = "pred_gbt" in br.columns and br.loc[daily_mask, "pred_gbt"].notna().any()
     if daily_mask.any():
-        dw = weights.get("dow", 0.33)
-        ew = weights.get("exp", 0.34)
-        gw = weights.get("gbt", 0.33)
-        total_w = dw + ew + gw
-        has_gbt = "pred_gbt" in br.columns and br.loc[daily_mask, "pred_gbt"].notna().any()
-        if has_gbt:
-            br.loc[daily_mask, "pred_lane"] = (
-                dw * br.loc[daily_mask, "pred_dow"] +
-                ew * br.loc[daily_mask, "pred_exp"] +
-                gw * br.loc[daily_mask, "pred_gbt"].fillna(0)
-            ) / total_w
+        if per_product_weights:
+            for (store, product), group_idx in br[daily_mask].groupby(["store", "product"]).groups.items():
+                pw = per_product_weights.get((store, product), weights)
+                dw, ew, gw = pw.get("dow", 0.33), pw.get("exp", 0.34), pw.get("gbt", 0.33)
+                total_w = dw + ew + gw
+                if has_gbt:
+                    br.loc[group_idx, "pred_lane"] = (
+                        dw * br.loc[group_idx, "pred_dow"] +
+                        ew * br.loc[group_idx, "pred_exp"] +
+                        gw * br.loc[group_idx, "pred_gbt"].fillna(0)
+                    ) / total_w
+                else:
+                    br.loc[group_idx, "pred_lane"] = (
+                        dw * br.loc[group_idx, "pred_dow"] +
+                        ew * br.loc[group_idx, "pred_exp"]
+                    ) / (dw + ew)
         else:
-            de_total = dw + ew
-            br.loc[daily_mask, "pred_lane"] = (
-                dw * br.loc[daily_mask, "pred_dow"] +
-                ew * br.loc[daily_mask, "pred_exp"]
-            ) / de_total
+            dw = weights.get("dow", 0.33)
+            ew = weights.get("exp", 0.34)
+            gw = weights.get("gbt", 0.33)
+            total_w = dw + ew + gw
+            if has_gbt:
+                br.loc[daily_mask, "pred_lane"] = (
+                    dw * br.loc[daily_mask, "pred_dow"] +
+                    ew * br.loc[daily_mask, "pred_exp"] +
+                    gw * br.loc[daily_mask, "pred_gbt"].fillna(0)
+                ) / total_w
+            else:
+                br.loc[daily_mask, "pred_lane"] = (
+                    dw * br.loc[daily_mask, "pred_dow"] +
+                    ew * br.loc[daily_mask, "pred_exp"]
+                ) / (dw + ew)
 
     # Lane distribution (unique store-product pairs per lane)
     dist_parts = []
@@ -322,6 +398,8 @@ def generate_accuracy_report(
 
     metric_key = FORECAST_CONFIG.get("ensemble_weight_metric", "mae")
     lines.append(f"  Weight optimization metric: {metric_key.upper()}")
+    if per_product_weights:
+        lines.append(f"  Per-product weights active for {len(per_product_weights)} items")
 
     # ── Lane 1: Daily ────────────────────────────────────────────────
     daily_br = br[daily_mask]
